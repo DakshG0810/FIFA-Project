@@ -1,41 +1,45 @@
 # WC Dashboard
 
-Real-time FIFA World Cup sentiment analytics dashboard built using React, FastAPI, NLP, and social media trend analysis.
-
----
+Real-time FIFA World Cup 2026 sentiment analytics dashboard tracking fan buzz,
+search trends, and win probabilities across all 32 teams.
 
 ## Features
 
-- Live public sentiment tracking
-- Google Trends analysis
-- Betting odds monitoring
-- Team popularity insights
-- Analytics dashboard
+- Live fan sentiment tracking via Bluesky
+- Google Trends search interest analysis
+- Live betting odds and win probability tracker
+- Team popularity and buzz volume insights
+- Sentiment vs odds divergence detection
+- Viral spike detector
 - Real-time backend APIs
 - Modular full-stack architecture
 
----
+## Data Sources
+
+| Source | What it provides | Cost |
+|---|---|---|
+| Bluesky public API | Fan posts + sentiment | Free, no key needed |
+| Google Trends | Search interest 0-100 per team | Free, no key needed |
+| The Odds API | Win probabilities from bookmakers | Free tier (500 req/mo) |
 
 ## Tech Stack
 
 ### Frontend
-- React
-- TypeScript
+- React + TypeScript
 - Tailwind CSS
 - Vite
-- Bun
+- Recharts
 
 ### Backend
-- FastAPI
-- Python
-- SQLite / PostgreSQL
+- FastAPI + Python
+- APScheduler
+- VADER sentiment analysis
+- SQLite (local) → PostgreSQL (production)
 - Uvicorn
-
----
 
 ## Project Structure
 
-```text
+```
 wc-dashboard/
 │
 ├── .env.example
@@ -48,7 +52,6 @@ wc-dashboard/
 │   ├── scheduler.py
 │   ├── api.py
 │   ├── requirements.txt
-│   │
 │   └── collectors/
 │       ├── __init__.py
 │       ├── bluesky.py
@@ -61,20 +64,16 @@ wc-dashboard/
     ├── tailwind.config.js
     ├── postcss.config.js
     ├── .env.local
-    │
     └── src/
         ├── App.tsx
         ├── api.ts
         ├── main.tsx
         ├── index.css
         ├── vite-env.d.ts
-        │
         ├── types/
         │   └── index.ts
-        │
         ├── hooks/
         │   └── useApi.ts
-        │
         ├── components/
         │   ├── Navbar.tsx
         │   ├── StatCard.tsx
@@ -82,7 +81,6 @@ wc-dashboard/
         │   ├── TeamFlag.tsx
         │   ├── LoadingSkeleton.tsx
         │   └── DataFreshnessBar.tsx
-        │
         └── pages/
             ├── Overview.tsx
             ├── Sentiment.tsx
@@ -91,137 +89,112 @@ wc-dashboard/
             └── Analytics.tsx
 ```
 
----
+## Environment Variables
 
-## Frontend Setup
+Create a `.env` file in the root `wc-dashboard/` folder:
 
-### Navigate to frontend
-
-```bash
-cd frontend
+```
+ODDS_API_KEY=your_odds_api_key_here
+DATABASE_URL=
+ENV=development
 ```
 
-### Install dependencies
+Create a `.env.local` file in the `frontend/` folder:
 
-```bash
-bun install
+```
+VITE_API_URL=http://localhost:8000
 ```
 
-### Start frontend server
-
-```bash
-bun run dev
-```
-
-Frontend runs on:
-
-```text
-http://localhost:5173
-```
-
----
+Get your free Odds API key at: https://the-odds-api.com
 
 ## Backend Setup
 
-### Navigate to backend
-
 ```bash
 cd backend
-```
-
-### Create virtual environment
-
-```bash
 python -m venv venv
-```
 
-### Activate virtual environment
-
-#### Windows
-
-```bash
+# Windows
 venv\Scripts\activate
-```
 
----
+# Mac/Linux
+source venv/bin/activate
 
-### Install dependencies
-
-```bash
 pip install -r requirements.txt
-```
 
----
+# Initialise database (run once)
+python database.py
 
-### Start backend server
+# Terminal 1 — data collector (runs every 30 min automatically)
+python scheduler.py
 
-```bash
+# Terminal 2 — API server
 uvicorn api:app --reload
 ```
 
-Backend runs on:
+Backend runs on: http://localhost:8000
+API docs at: http://localhost:8000/docs
 
-```text
-http://127.0.0.1:8000
+## Frontend Setup
+
+```bash
+cd frontend
+npm install
+npm run dev
 ```
 
----
+Frontend runs on: http://localhost:5173
 
-## Environment Variables
+## API Endpoints
 
-Create a `.env` file in the root directory.
-
-Example:
-
-```env
-REDDIT_CLIENT_ID=
-REDDIT_SECRET=
-TWITTER_BEARER_TOKEN=
-```
-
----
+| Endpoint | Description |
+|---|---|
+| GET /api/status | Health check + last collection times |
+| GET /api/leaderboard | Combined team rankings |
+| GET /api/sentiment | Sentiment per team |
+| GET /api/sentiment/{team}/history | Time series for one team |
+| GET /api/odds | Win probabilities |
+| GET /api/trends | Google Trends scores |
+| GET /api/keywords | Top buzzwords |
+| GET /api/spikes | Viral spike alerts |
 
 ## Collaboration Workflow
 
-Pull latest changes:
-
 ```bash
 git pull
-```
-
-Push new changes:
-
-```bash
 git add .
 git commit -m "your message"
 git push
 ```
 
----
-
-## Important Notes
-
-Do not push the following to GitHub:
+## Important — never push these to GitHub
 
 - `node_modules/`
 - `venv/`
 - `.env`
+- `.env.local`
 
-These are already handled in `.gitignore`.
+Already handled in `.gitignore`.
 
----
+## Deployment
 
-## Current Development Status
+- **Backend:** Render.com (free tier)
+- **Frontend:** Vercel (free tier)
+- **Database:** Render PostgreSQL (free, set DATABASE_URL env var)
 
-- Frontend architecture setup completed
-- Backend architecture setup completed
-- Tailwind configuration completed
-- API structure setup completed
+## Development Status
 
-Pending:
-- Live sentiment ingestion
-- NLP pipeline
-- Real-time analytics
-- Dashboard visualizations
+### Completed
+- Full project architecture
+- Backend data collectors (Bluesky, Google Trends, Odds API)
+- FastAPI with 8 endpoints
+- SQLite/PostgreSQL auto-switching
+- React frontend with 5 pages and 6 components
+- Tailwind + Recharts configuration
+- Sentiment analysis pipeline (VADER)
+
+### Pending
+- Live data verification and testing
+- Deployment to Render + Vercel
+- Real-time dashboard polish
 - Match-level analytics
-- Team prediction engine
+- LinkedIn share cards

@@ -10,9 +10,9 @@ PostgreSQL = deployed on Render, data persists forever.
 import os
 import sqlite3
 from datetime import datetime
-from dotenv import load_dotenv
+from dotenv import load_dotenv, find_dotenv
 
-load_dotenv()
+load_dotenv(find_dotenv())
 
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 USE_POSTGRES = bool(DATABASE_URL)
