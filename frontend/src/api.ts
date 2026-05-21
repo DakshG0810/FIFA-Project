@@ -20,9 +20,13 @@ const BASE = import.meta.env.VITE_API_URL || "http://localhost:8000"
 async function get<T>(path: string, fallback: T): Promise<T> {
   try {
     const res = await fetch(`${BASE}${path}`)
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    if (!res.ok) {
+      console.warn(`[API] ${path} → HTTP ${res.status}`)
+      throw new Error(`HTTP ${res.status}`)
+    }
     return res.json() as Promise<T>
-  } catch {
+  } catch (e) {
+    console.warn(`[API] ${path} failed`, e)
     return fallback
   }
 }

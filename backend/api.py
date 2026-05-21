@@ -150,7 +150,7 @@ def get_sentiment(
                    AVG(compound)  as compound,
                    SUM(mention_count) as mentions,
                    SUM(reach_score)   as total_reach,
-                   source
+                   MAX(source) as source
             FROM sentiment_snapshots
             WHERE captured_at > {p} AND source = {p}
             GROUP BY team
@@ -178,13 +178,13 @@ def get_team_sentiment_history(team: str, days: int = Query(30)):
     conn = get_connection()
     p = ph()
     rows = conn.execute(f"""
-        SELECT captured_at, source,
+        SELECT substr(captured_at, 1, 13) as captured_at, source,
                AVG(compound)  as compound,
                SUM(mention_count) as mentions
         FROM sentiment_snapshots
         WHERE team = {p} AND captured_at > {p}
         GROUP BY substr(captured_at, 1, 13), source
-        ORDER BY captured_at ASC
+        ORDER BY substr(captured_at, 1, 13) ASC
     """, (team, since(days * 24))).fetchall()
     conn.close()
     return rows_to_list(rows)
@@ -196,13 +196,12 @@ def get_odds():
     p = ph()
     placeholders = ",".join([p] * len(TEAM_NAMES))
     rows = conn.execute(f"""
-        SELECT team, win_probability, decimal_odds, bookmaker,
-               MAX(captured_at) as captured_at
+        SELECT DISTINCT ON (team) team, win_probability, decimal_odds, bookmaker, captured_at
         FROM odds_snapshots
         WHERE team IN ({placeholders})
-        GROUP BY team
-        ORDER BY win_probability DESC
+        ORDER BY team, captured_at DESC
     """, tuple(TEAM_NAMES)).fetchall()
+    rows = sorted(rows, key=lambda r: r["win_probability"] or 0, reverse=True)
     conn.close()
     return rows_to_list(rows)
 
@@ -225,11 +224,11 @@ def get_trends():
     """Latest Google Trends interest score per team."""
     conn = get_connection()
     rows = conn.execute("""
-        SELECT team, interest_score, region, MAX(captured_at) as captured_at
+        SELECT DISTINCT ON (team) team, interest_score, region, captured_at
         FROM trends_snapshots
-        GROUP BY team
-        ORDER BY interest_score DESC
+        ORDER BY team, captured_at DESC
     """).fetchall()
+    rows = sorted(rows, key=lambda r: r["interest_score"] or 0, reverse=True)
     conn.close()
     return rows_to_list(rows)
 
@@ -245,7 +244,7 @@ def get_keywords(
     conn = get_connection()
     p = ph()
     rows = conn.execute(f"""
-        SELECT keyword, SUM(frequency) as total_freq, team_association
+        SELECT keyword, SUM(frequency) as total_freq, MAX(team_association) as team_association
         FROM keyword_snapshots
         WHERE captured_at > {p}
         GROUP BY keyword

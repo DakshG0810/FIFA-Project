@@ -212,7 +212,7 @@ def get_clusters(team: str = Query(None)):
     p = ph()
     rows = conn.execute(
         f"""
-        SELECT keyword, SUM(frequency) as total_freq, team_association
+        SELECT keyword, SUM(frequency) as total_freq, MAX(team_association) as team_association
         FROM keyword_snapshots WHERE captured_at > {p}
         GROUP BY keyword ORDER BY total_freq DESC LIMIT 200
         """,
@@ -355,16 +355,17 @@ def get_narrative(teams: str = Query("Argentina,France,England,Brazil"), days: i
     for team in team_list:
         rows = conn.execute(
             f"""
-            SELECT captured_at, AVG(compound) as compound, SUM(mention_count) as mentions
+            SELECT substr(captured_at, 1, 13) as captured_at,
+                   AVG(compound) as compound, SUM(mention_count) as mentions
             FROM sentiment_snapshots
             WHERE team = {p} AND source = {p} AND captured_at > {p}
             GROUP BY substr(captured_at, 1, 13)
-            ORDER BY captured_at ASC
+            ORDER BY substr(captured_at, 1, 13) ASC
             """,
             (team, "bluesky", cutoff),
         ).fetchall()
         for row in rows:
-            bucket = row["captured_at"][:13]
+            bucket = row["captured_at"]
             series_by_time[bucket][team] = round(row["compound"] or 0, 4)
             series_by_time[bucket][f"{team}_mentions"] = row["mentions"] or 0
 
