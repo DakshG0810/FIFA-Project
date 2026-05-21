@@ -6,7 +6,10 @@ Batches teams into groups of 5 (API limit).
 Waits 15 seconds between batches to avoid rate limiting.
 Stores 0-100 interest score per team per region.
 """
+import sys
+import os
 
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import time
 from datetime import datetime
 from pytrends.request import TrendReq
