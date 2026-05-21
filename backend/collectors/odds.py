@@ -10,11 +10,18 @@ Normalises all 32 teams so probabilities sum to 100%.
 import os
 import requests
 from datetime import datetime
-from dotenv import load_dotenv
+from dotenv import load_dotenv, find_dotenv
 from database import get_connection, ph
-from teams import TEAMS
+from teams import TEAMS, TEAM_NAMES
 
-load_dotenv()
+load_dotenv(find_dotenv())
+
+def _log(msg: str):
+    """Print safely on Windows consoles that lack UTF-8 emoji support."""
+    try:
+        print(msg)
+    except UnicodeEncodeError:
+        print(msg.encode("ascii", errors="replace").decode("ascii"))
 
 ODDS_API_URL = "https://api.the-odds-api.com/v4/sports/soccer_fifa_world_cup/odds/"
 
@@ -55,10 +62,10 @@ ODDS_NAME_MAP = {
 }
 
 def collect_odds():
-    print(f"\n[Odds] Starting collection — {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    _log(f"\n[Odds] Starting collection — {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     api_key = os.getenv("ODDS_API_KEY")
     if not api_key:
-        print("[Odds] No ODDS_API_KEY found in .env — skipping")
+        _log("[Odds] No ODDS_API_KEY found in .env — skipping")
         return
 
     try:
@@ -75,13 +82,13 @@ def collect_odds():
         resp.raise_for_status()
         # Log remaining API quota
         remaining = resp.headers.get("x-requests-remaining", "unknown")
-        print(f"  API requests remaining this month: {remaining}")
+        _log(f"  API requests remaining this month: {remaining}")
         data = resp.json()
     except Exception as e:
-        print(f"[Odds] API error: {e}")
+        _log(f"[Odds] API error: {e}")
         return
 
-    # Aggregate odds per team across all bookmakers
+    # Aggregate odds per WC team only (ignore Draw, qualifiers, etc.)
     team_odds = {}
     for event in data:
         for bookmaker in event.get("bookmakers", []):
@@ -90,20 +97,20 @@ def collect_odds():
                     continue
                 for outcome in market.get("outcomes", []):
                     raw_name = outcome["name"]
-                    our_name = ODDS_NAME_MAP.get(raw_name, raw_name)
-                    decimal  = float(outcome["price"])
+                    our_name = ODDS_NAME_MAP.get(raw_name)
+                    if not our_name or our_name not in TEAM_NAMES:
+                        continue
+                    decimal = float(outcome["price"])
                     if decimal > 1:
                         prob = 1 / decimal
-                        if our_name not in team_odds:
-                            team_odds[our_name] = []
-                        team_odds[our_name].append({
+                        team_odds.setdefault(our_name, []).append({
                             "prob": prob,
                             "decimal": decimal,
                             "bookmaker": bookmaker["key"],
                         })
 
     if not team_odds:
-        print("[Odds] No odds data returned — World Cup odds may not be live yet")
+        _log("[Odds] No odds data returned — World Cup odds may not be live yet")
         return
 
     # Average probability per team across bookmakers
@@ -115,7 +122,7 @@ def collect_odds():
             "bookmaker": entries[0]["bookmaker"],
         }
 
-    # Normalise so all probabilities sum to 1
+    # Normalise across our 32 teams only
     total = sum(v["prob"] for v in avg_probs.values())
     if total > 0:
         for team in avg_probs:
@@ -140,11 +147,12 @@ def collect_odds():
         ))
         saved += 1
         pct = round(data_.get("prob_normalised", data_["prob"]) * 100, 1)
-        print(f"  {TEAMS.get(team, {}).get('flag','  ')} {team}: {pct}%")
+        flag = TEAMS.get(team, {}).get("flag", "")
+        _log(f"  {flag} {team}: {pct}%")
 
     conn.commit()
     conn.close()
-    print(f"[Odds] Done — {saved} teams saved")
+    _log(f"[Odds] Done — {saved}/{len(TEAM_NAMES)} WC teams saved")
 
 if __name__ == "__main__":
     collect_odds()

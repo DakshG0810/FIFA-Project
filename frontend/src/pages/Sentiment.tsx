@@ -6,6 +6,10 @@ import { api } from "../api"
 import SentimentBar from "../components/SentimentBar"
 import TeamFlag from "../components/TeamFlag"
 import LoadingSkeleton from "../components/LoadingSkeleton"
+import MomentumArrow from "../components/MomentumArrow"
+import DataBadge from "../components/DataBadge"
+import { useDataMode } from "../hooks/useDataMode"
+import type { SentimentRow } from "../types"
 
 import {
   LineChart,
@@ -24,6 +28,7 @@ type Sort =
   | "negative"
 
 export default function Sentiment() {
+  const badge = useDataMode("bluesky")
 
   const [sort, setSort] =
     useState<Sort>("mentions")
@@ -34,7 +39,7 @@ export default function Sentiment() {
   // SAFE FETCHERS
 
   const fetchSentiment = useCallback(
-    () => api.sentiment(48),
+    () => api.sentiment(48, "bluesky"),
     []
   )
 
@@ -50,10 +55,7 @@ export default function Sentiment() {
 
   // SAFE API HOOKS
 
-  const {
-    data,
-    loading,
-  } = useApi(fetchSentiment, [], 60000)
+  const { data, loading } = useApi<SentimentRow[]>(fetchSentiment, [], 60000)
 
   const {
     data: history,
@@ -124,16 +126,12 @@ export default function Sentiment() {
   return (
     <div className="space-y-6">
 
-      <div>
-
-        <h1 className="text-2xl font-bold text-white mb-1">
-          Sentiment Leaderboard
-        </h1>
-
-        <p className="text-white/40 text-sm">
-          Fan sentiment from Bluesky posts
-        </p>
-
+      <div className="flex items-center gap-2">
+        <div>
+          <h1 className="text-2xl font-bold text-white mb-1">Sentiment Leaderboard</h1>
+          <p className="text-white/40 text-sm">Fan sentiment from Bluesky posts</p>
+        </div>
+        <DataBadge mode={badge} />
       </div>
 
       {/* SORT BUTTONS */}
@@ -234,19 +232,13 @@ export default function Sentiment() {
 
                   </div>
 
+                  <MomentumArrow momentum={comp >= 0.05 ? "up" : comp <= -0.05 ? "down" : "flat"} />
                   <span
                     className={`text-xs font-mono shrink-0 ${
-                      comp >= 0.1
-                        ? "text-emerald-400"
-                        : comp <= -0.1
-                        ? "text-red-400"
-                        : "text-white/30"
+                      comp >= 0.1 ? "text-emerald-400" : comp <= -0.1 ? "text-red-400" : "text-white/30"
                     }`}
                   >
-
-                    {comp >= 0 ? "+" : ""}
-                    {comp.toFixed(3)}
-
+                    {comp >= 0 ? "+" : ""}{comp.toFixed(3)}
                   </span>
 
                 </button>

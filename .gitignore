@@ -22,6 +22,9 @@ frontend/dist-ssr/
 backend/venv/
 backend/__pycache__/
 *.pyc
+backend/*.db
+backend/**/*.db
+*.db
 
 # =========================
 # Environment Variables

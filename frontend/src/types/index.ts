@@ -5,8 +5,18 @@ export interface TeamSentiment {
   negative: number
   mentions: number
   reach: number
-  win_probability?: number
-  trends_score?: number
+  win_probability?: number | null
+  trends_score?: number | null
+  momentum?: "up" | "down" | "flat"
+}
+
+export interface SentimentRow {
+  team: string
+  positive: number
+  negative: number
+  compound: number
+  mentions: number
+  total_reach: number
 }
 
 export interface OddsEntry {
@@ -31,6 +41,7 @@ export interface Keyword {
 }
 
 export interface SpikeAlert {
+  id?: number
   team: string
   source: string
   mentions_current: number
@@ -40,6 +51,8 @@ export interface SpikeAlert {
   detected_at: string
 }
 
+export type DataMode = "LIVE" | "CACHED" | "DEMO"
+
 export interface ApiStatus {
   status: string
   last_bluesky?: string
@@ -47,6 +60,16 @@ export interface ApiStatus {
   last_odds?: string
   total_snapshots: number
   server_time: string
+  data_sources?: {
+    bluesky?: string
+    google_trends?: string
+    odds?: string
+  }
+  collection_schedule?: {
+    bluesky_minutes: number
+    odds_minutes: number
+    trends_hours: number
+  }
 }
 
 export interface HistoryPoint {
@@ -54,4 +77,55 @@ export interface HistoryPoint {
   compound: number
   mentions: number
   source?: string
+}
+
+export interface BuzzTeam {
+  team: string
+  mentions: number
+  rolling_avg_6h: number
+  relative_multiplier: number
+  sparkline: number[]
+  confederation: string
+  confederation_color: string
+}
+
+export interface SpikeHeatmapData {
+  teams: string[]
+  buckets: number
+  hours: number
+  cells: { team: string; bucket: number; mentions: number; intensity: number }[]
+  max_mentions: number
+}
+
+export interface TopicCluster {
+  id: string
+  name: string
+  icon: string
+  volume: number
+  top_keywords: { keyword: string; freq: number }[]
+  top_posts: { text: string; handle: string; reach: number }[]
+}
+
+export interface Influencer {
+  handle: string
+  display_name: string
+  reach_score: number
+  primary_team: string
+  sentiment: number
+  viral_post: string
+  captured_at?: string
+}
+
+export interface CountryTrend {
+  code: string
+  name: string
+  top_team: string | null
+  top3: { team: string; score: number }[]
+  top5: { team: string; score: number }[]
+  highlight_score: number
+}
+
+export interface NarrativePoint {
+  time: string
+  [key: string]: string | number
 }

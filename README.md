@@ -97,6 +97,9 @@ Create a `.env` file in the root `wc-dashboard/` folder:
 ODDS_API_KEY=your_odds_api_key_here
 DATABASE_URL=
 ENV=development
+BLUESKY_HANDLE=your.handle.bsky.social
+BLUESKY_APP_PASSWORD=your-app-password
+BLUESKY_DEMO_FALLBACK=true
 ```
 
 Create a `.env.local` file in the `frontend/` folder:

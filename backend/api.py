@@ -21,10 +21,20 @@ import os
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from database import get_connection, init_db, ph
+from teams import TEAM_NAMES
 from datetime import datetime, timedelta
-from dotenv import load_dotenv
+from dotenv import load_dotenv, find_dotenv
+from api_analytics import router as analytics_router
 
-load_dotenv()
+load_dotenv(find_dotenv())
+
+DATA_STALE_HOURS = float(os.getenv("DATA_STALE_HOURS", "30"))
+COLLECT_INTERVAL_HOURS = int(os.getenv("COLLECT_INTERVAL_HOURS", "24"))
+
+_cors_origins = ["http://localhost:5173", "http://127.0.0.1:5173"]
+_frontend = os.getenv("FRONTEND_URL", "").strip().rstrip("/")
+if _frontend:
+    _cors_origins.append(_frontend)
 
 app = FastAPI(
     title="WC Dashboard API",
@@ -34,10 +44,12 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
     allow_methods=["GET"],
     allow_headers=["*"],
 )
+
+app.include_router(analytics_router)
 
 @app.on_event("startup")
 def startup():
@@ -50,6 +62,30 @@ def since(hours=24):
 
 def rows_to_list(rows):
     return [dict(r) for r in rows]
+
+def source_mode(last_iso: str | None, stale_hours: float | None = None) -> str:
+    if stale_hours is None:
+        stale_hours = DATA_STALE_HOURS
+    """LIVE = fresh collection, CACHED = stale, empty = no data."""
+    if not last_iso:
+        return "empty"
+    try:
+        ts = datetime.fromisoformat(last_iso.replace("Z", "").split("+")[0])
+        age_h = (datetime.now() - ts).total_seconds() / 3600
+        return "live" if age_h <= stale_hours else "cached"
+    except ValueError:
+        return "cached"
+
+def bluesky_status_label(last_iso: str | None) -> str:
+    """Badge label for /api/status — demo only when using synthetic fallback."""
+    import os
+    has_creds = bool(os.getenv("BLUESKY_HANDLE", "").strip() and os.getenv("BLUESKY_APP_PASSWORD", "").strip())
+    demo_on = os.getenv("BLUESKY_DEMO_FALLBACK", "true").lower() in ("1", "true", "yes")
+    if has_creds:
+        return source_mode(last_iso, stale_hours=DATA_STALE_HOURS) if last_iso else "empty"
+    if demo_on and last_iso:
+        return "demo"
+    return source_mode(last_iso) if last_iso else "empty"
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
 
@@ -71,13 +107,28 @@ def status():
         "SELECT COUNT(*) as n FROM sentiment_snapshots"
     ).fetchone()
     conn.close()
+    lb = last_bluesky["t"] if last_bluesky else None
+    lt = last_trends["t"]  if last_trends  else None
+    lo = last_odds["t"]    if last_odds    else None
+    has_bsky_creds = bool(os.getenv("BLUESKY_HANDLE", "").strip() and os.getenv("BLUESKY_APP_PASSWORD", "").strip())
     return {
         "status": "ok",
-        "last_bluesky":       last_bluesky["t"] if last_bluesky else None,
-        "last_google_trends": last_trends["t"]  if last_trends  else None,
-        "last_odds":          last_odds["t"]    if last_odds    else None,
+        "last_bluesky":       lb,
+        "last_google_trends": lt,
+        "last_odds":          lo,
         "total_snapshots":    total["n"]        if total        else 0,
         "server_time":        datetime.now().isoformat(),
+        "bluesky_configured": has_bsky_creds,
+        "bluesky_demo_fallback": os.getenv("BLUESKY_DEMO_FALLBACK", "true").lower() in ("1", "true", "yes"),
+        "data_sources": {
+            "bluesky":       bluesky_status_label(lb),
+            "google_trends": source_mode(lt),
+            "odds":          source_mode(lo),
+        },
+        "collection_schedule": {
+            "interval_hours": COLLECT_INTERVAL_HOURS,
+            "note": "Bluesky, Google Trends, and Odds run together on this interval",
+        },
     }
 
 @app.get("/api/sentiment")
@@ -139,13 +190,16 @@ def get_team_sentiment_history(team: str, days: int = Query(30)):
 def get_odds():
     """Latest win probability per team."""
     conn = get_connection()
-    rows = conn.execute("""
+    p = ph()
+    placeholders = ",".join([p] * len(TEAM_NAMES))
+    rows = conn.execute(f"""
         SELECT team, win_probability, decimal_odds, bookmaker,
                MAX(captured_at) as captured_at
         FROM odds_snapshots
+        WHERE team IN ({placeholders})
         GROUP BY team
         ORDER BY win_probability DESC
-    """).fetchall()
+    """, tuple(TEAM_NAMES)).fetchall()
     conn.close()
     return rows_to_list(rows)
 
@@ -177,8 +231,14 @@ def get_trends():
     return rows_to_list(rows)
 
 @app.get("/api/keywords")
-def get_keywords(hours: int = Query(24), limit: int = Query(30)):
+def get_keywords(
+    hours: int = Query(24),
+    limit: int = Query(50),
+    category: str = Query(None, description="all|players|events|emotions|tactical"),
+):
     """Top keywords in the last N hours."""
+    from topics import keyword_category
+
     conn = get_connection()
     p = ph()
     rows = conn.execute(f"""
@@ -188,9 +248,13 @@ def get_keywords(hours: int = Query(24), limit: int = Query(30)):
         GROUP BY keyword
         ORDER BY total_freq DESC
         LIMIT {p}
-    """, (since(hours), limit)).fetchall()
+    """, (since(hours), limit * 3)).fetchall()
     conn.close()
-    return rows_to_list(rows)
+
+    result = rows_to_list(rows)
+    if category and category != "all":
+        result = [r for r in result if keyword_category(r["keyword"]) == category]
+    return result[:limit]
 
 @app.get("/api/leaderboard")
 def get_leaderboard():
@@ -225,10 +289,32 @@ def get_leaderboard():
         WHERE captured_at = (SELECT MAX(captured_at) FROM trends_snapshots)
     """).fetchall()
 
+    momentum_rows = conn.execute(f"""
+        SELECT team, compound, captured_at FROM sentiment_snapshots
+        WHERE source = {p} AND captured_at > {p}
+        ORDER BY captured_at ASC
+    """, ("bluesky", since(12))).fetchall()
+
     conn.close()
 
-    odds_map   = {r["team"]: r["win_probability"] for r in odds}
+    odds_map   = {r["team"]: r["win_probability"] for r in odds if r["team"] in TEAM_NAMES}
     trends_map = {r["team"]: r["interest_score"]  for r in trends}
+
+    momentum_map = {}
+    by_team = {}
+    for row in momentum_rows:
+        by_team.setdefault(row["team"], []).append(row["compound"] or 0)
+    for team, values in by_team.items():
+        if len(values) < 2:
+            momentum_map[team] = "flat"
+        else:
+            delta = values[-1] - values[0]
+            if delta > 0.05:
+                momentum_map[team] = "up"
+            elif delta < -0.05:
+                momentum_map[team] = "down"
+            else:
+                momentum_map[team] = "flat"
 
     result = []
     for row in sentiment:
@@ -242,6 +328,7 @@ def get_leaderboard():
             "reach":           row["reach"] or 0,
             "win_probability": odds_map.get(team),
             "trends_score":    trends_map.get(team),
+            "momentum":        momentum_map.get(team, "flat"),
         })
 
     result.sort(key=lambda x: x["mentions"], reverse=True)

@@ -1,97 +1,67 @@
 import { useCallback } from "react"
 import { useApi } from "../hooks/useApi"
 import { api } from "../api"
-
-type TrendItem = {
-  team: string
-  interest_score: number
-  region: string
-  captured_at: string
-}
+import type { TrendsEntry } from "../types"
+import BuzzwordCloud from "../components/BuzzwordCloud"
+import TeamFlag from "../components/TeamFlag"
+import LoadingSkeleton from "../components/LoadingSkeleton"
+import DataBadge from "../components/DataBadge"
+import { useDataMode } from "../hooks/useDataMode"
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts"
 
 export default function Trends() {
+  const badge = useDataMode("google_trends")
+  const fetchTrends = useCallback(() => api.trends(), [])
+  const { data: trends, loading } = useApi<TrendsEntry[]>(fetchTrends, [], 300000)
 
-  const fetchTrends = useCallback(async () => {
-    const data = await api.trends()
-
-    if (!Array.isArray(data)) {
-      return []
-    }
-
-    return data
-  }, [])
-
-  const {
-    data: trends,
-    loading
-  } = useApi<TrendItem[]>(
-    fetchTrends,
-    [],
-    30000
-  )
-
-  if (loading) {
-    return (
-      <div className="text-white p-10">
-        Loading trends...
-      </div>
-    )
-  }
+  const chartData = [...trends]
+    .sort((a, b) => b.interest_score - a.interest_score)
+    .map((t) => ({ team: t.team, score: t.interest_score }))
 
   return (
-    <div className="p-6 space-y-6">
-
+    <div className="space-y-8">
       <div>
-        <h1 className="text-4xl font-bold text-white">
-          Google Trends
-        </h1>
-
-        <p className="text-white/50">
-          Live FIFA World Cup search interest
-        </p>
+        <div className="flex items-center gap-2">
+          <h1 className="text-3xl font-bold text-white">Google Trends</h1>
+          <DataBadge mode={badge} />
+        </div>
+        <p className="text-white/40 text-sm mt-1">Search interest 0–100 · worldwide</p>
       </div>
 
-      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <BuzzwordCloud />
 
-        {trends.map((team, index) => (
+      <div className="bg-white/5 border border-white/10 rounded-2xl p-5 space-y-4">
+        <h2 className="text-white font-semibold">Search interest ranking</h2>
+        {loading ? (
+          <LoadingSkeleton rows={6} />
+        ) : (
+          <>
+            <ResponsiveContainer width="100%" height={320}>
+              <BarChart data={chartData.slice(0, 16)}>
+                <XAxis dataKey="team" tick={{ fill: "#ffffff50", fontSize: 9 }} angle={-35} textAnchor="end" height={70} />
+                <YAxis domain={[0, 100]} tick={{ fill: "#ffffff40", fontSize: 10 }} />
+                <Tooltip contentStyle={{ background: "#111", border: "1px solid #333" }} />
+                <Bar dataKey="score" radius={[4, 4, 0, 0]}>
+                  {chartData.slice(0, 16).map((_, i) => (
+                    <Cell key={i} fill={`hsl(160, 65%, ${38 + (i % 6) * 6}%)`} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
 
-          <div
-            key={`${team.team}-${index}`}
-            className="bg-white/5 border border-white/10 rounded-2xl p-5"
-          >
-
-            <div className="flex items-center justify-between">
-
-              <div>
-                <h2 className="text-2xl font-semibold text-white">
-                  {team.team}
-                </h2>
-
-                <p className="text-white/40 text-sm">
-                  {team.region}
-                </p>
-              </div>
-
-              <div className="text-right">
-
-                <div className="text-4xl font-bold text-emerald-400">
-                  {team.interest_score}
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {chartData.map((team, index) => (
+                <div key={team.team} className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl px-4 py-3">
+                  <span className="text-white/30 font-mono text-xs w-6">#{index + 1}</span>
+                  <TeamFlag team={team.team} size="sm" />
+                  <span className="text-white text-sm flex-1">{team.team}</span>
+                  <span className="text-emerald-400 font-mono font-bold">{team.score}</span>
                 </div>
-
-                <div className="text-white/40 text-sm">
-                  trend score
-                </div>
-
-              </div>
-
+              ))}
             </div>
-
-          </div>
-
-        ))}
-
+          </>
+        )}
       </div>
-
     </div>
   )
 }

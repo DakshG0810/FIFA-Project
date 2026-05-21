@@ -1,21 +1,24 @@
 """
 scheduler.py
 ------------
-Runs all three collectors on a schedule.
-Google Trends: every 6 hours (rate limit friendly)
-Bluesky:       every 30 minutes
-Odds:          every 60 minutes (saves free API quota)
+Runs all collectors on a schedule (default: once per day).
 
-Run this once and leave it running in a terminal.
-It will collect data around the clock automatically.
+Set COLLECT_INTERVAL_HOURS=24 on Render to stay within free-tier limits.
 """
 
+import os
 from apscheduler.schedulers.blocking import BlockingScheduler
 from datetime import datetime
+from dotenv import load_dotenv, find_dotenv
 from database import init_db
 from collectors.bluesky import collect_bluesky
 from collectors.google_trends import collect_google_trends
 from collectors.odds import collect_odds
+
+load_dotenv(find_dotenv())
+
+COLLECT_INTERVAL_HOURS = max(1, int(os.getenv("COLLECT_INTERVAL_HOURS", "24")))
+
 
 def run_bluesky():
     try:
@@ -23,11 +26,13 @@ def run_bluesky():
     except Exception as e:
         print(f"[Scheduler] Bluesky error: {e}")
 
+
 def run_trends():
     try:
         collect_google_trends()
     except Exception as e:
         print(f"[Scheduler] Trends error: {e}")
+
 
 def run_odds():
     try:
@@ -35,27 +40,31 @@ def run_odds():
     except Exception as e:
         print(f"[Scheduler] Odds error: {e}")
 
-def run_all_once():
+
+def run_all_collectors():
     print(f"\n{'='*52}")
-    print(f"[Scheduler] First run — {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    print(f"[Scheduler] Collection run — {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     print(f"{'='*52}")
     run_bluesky()
     run_trends()
     run_odds()
+    print(f"[Scheduler] Run complete — next in {COLLECT_INTERVAL_HOURS}h\n")
+
 
 if __name__ == "__main__":
     init_db()
-    run_all_once()
+    run_all_collectors()
 
     scheduler = BlockingScheduler()
-    scheduler.add_job(run_bluesky, "interval", minutes=30,  id="bluesky")
-    scheduler.add_job(run_trends,  "interval", hours=6,     id="trends")
-    scheduler.add_job(run_odds,    "interval", minutes=60,  id="odds")
+    scheduler.add_job(
+        run_all_collectors,
+        "interval",
+        hours=COLLECT_INTERVAL_HOURS,
+        id="daily_collect",
+    )
 
-    print("\n[Scheduler] Running. Schedule:")
-    print("  Bluesky      — every 30 minutes")
-    print("  Google Trends — every 6 hours")
-    print("  Odds API     — every 60 minutes")
+    print("[Scheduler] Running. Schedule:")
+    print(f"  All sources (Bluesky + Trends + Odds) — every {COLLECT_INTERVAL_HOURS} hours")
     print("  Press Ctrl+C to stop\n")
 
     try:

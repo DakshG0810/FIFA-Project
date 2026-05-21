@@ -14,7 +14,9 @@ from dotenv import load_dotenv, find_dotenv
 
 load_dotenv(find_dotenv())
 
-DATABASE_URL = os.getenv("DATABASE_URL", "")
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 USE_POSTGRES = bool(DATABASE_URL)
 
 def get_connection():
@@ -113,10 +115,25 @@ def init_db():
         )
     """)
 
+    # influencer_snapshots — top Bluesky accounts by reach
+    cursor.execute(f"""
+        CREATE TABLE IF NOT EXISTS influencer_snapshots (
+            id {'SERIAL' if USE_POSTGRES else 'INTEGER'} PRIMARY KEY {'AUTOINCREMENT' if not USE_POSTGRES else ''},
+            captured_at TEXT NOT NULL,
+            handle TEXT NOT NULL,
+            display_name TEXT,
+            reach_score REAL DEFAULT 0,
+            primary_team TEXT,
+            sentiment REAL DEFAULT 0,
+            viral_post TEXT
+        )
+    """)
+
     # Indexes for fast time-series queries
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_sentiment_team_time ON sentiment_snapshots(team, captured_at)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_odds_team_time ON odds_snapshots(team, captured_at)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_trends_team_time ON trends_snapshots(team, captured_at)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_influencer_time ON influencer_snapshots(captured_at)")
 
     conn.commit()
     conn.close()
