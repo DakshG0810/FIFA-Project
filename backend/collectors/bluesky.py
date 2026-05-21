@@ -219,7 +219,7 @@ def parse_post(post):
 def detect_viral_spike(cursor, team_name, current_mentions, captured_at, p):
     """Flag when current mentions exceed 3x the 6-hour rolling average."""
     six_hours_ago = (datetime.now() - timedelta(hours=6)).isoformat()
-    row = cursor.execute(
+    cursor.execute(
         f"""
         SELECT AVG(mention_count) as avg_mentions
         FROM sentiment_snapshots
@@ -227,7 +227,8 @@ def detect_viral_spike(cursor, team_name, current_mentions, captured_at, p):
           AND captured_at > {p} AND captured_at < {p}
         """,
         (team_name, "bluesky", six_hours_ago, captured_at),
-    ).fetchone()
+    )
+    row = cursor.fetchone()
 
     avg = row["avg_mentions"] if row else None
     if not avg or avg <= 0:

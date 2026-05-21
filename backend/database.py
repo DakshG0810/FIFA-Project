@@ -14,7 +14,11 @@ from dotenv import load_dotenv, find_dotenv
 
 load_dotenv(find_dotenv())
 
-DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+def _clean_env(name: str) -> str:
+    return (os.getenv(name) or "").strip()
+
+
+DATABASE_URL = _clean_env("DATABASE_URL")
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 USE_POSTGRES = bool(DATABASE_URL)

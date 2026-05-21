@@ -63,7 +63,7 @@ ODDS_NAME_MAP = {
 
 def collect_odds():
     _log(f"\n[Odds] Starting collection — {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-    api_key = os.getenv("ODDS_API_KEY")
+    api_key = (os.getenv("ODDS_API_KEY") or "").strip()
     if not api_key:
         _log("[Odds] No ODDS_API_KEY found in .env — skipping")
         return
