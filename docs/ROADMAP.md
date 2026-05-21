@@ -49,15 +49,15 @@ Configured in `backend/scheduler.py` via `COLLECT_INTERVAL_HOURS`.
 
 ## Production on Render (no laptop needed)
 
-Deploy **three** pieces:
+Deploy **free** stack:
 
-1. **Web Service** — `uvicorn api:app` (always on, serves dashboard API)
-2. **Background Worker** — `python scheduler.py` (runs collectors 24/7)
-3. **PostgreSQL** — set `DATABASE_URL` (data persists; replaces SQLite)
+1. **Web Service** (Render free) — `uvicorn api:app` serves the API
+2. **PostgreSQL** (Render free) — `DATABASE_URL` (shared cloud DB)
+3. **GitHub Actions** — `.github/workflows/daily-collect.yml` runs collectors once per day (no paid Render worker)
 
 Frontend on **Vercel** with `VITE_API_URL=https://your-api.onrender.com`.
 
-You do **not** keep your PC on. Render worker calls external APIs on schedule automatically.
+You do **not** keep your PC on.
 
 ---
 

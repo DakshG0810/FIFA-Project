@@ -13,7 +13,7 @@ Work **one step per session** when building features. **Deploy (Step 6)** can be
 | **3** | Six insights (momentum, controversy, dark horse, bandwagon, echo chamber, keyword graph) | **Pending** |
 | **4** | Bluesky LIVE (app password in `.env`) | **Done** |
 | **5** | Team workflow — Git + shared DB story | **Ready** — see `docs/TEAM_GITHUB.md` |
-| **6** | Deploy Render (API + worker + Postgres) + Vercel frontend | **Ready** — see `docs/DEPLOY_RENDER.md` |
+| **6** | Deploy Render (API + Postgres) + GitHub Actions daily + Vercel | **Ready** — see `docs/DEPLOY_RENDER.md` |
 
 ---
 
@@ -22,12 +22,13 @@ Work **one step per session** when building features. **Deploy (Step 6)** can be
 You can close your laptop after this:
 
 1. Push repo to GitHub (`docs/TEAM_GITHUB.md`).
-2. Render Blueprint from `render.yaml` — API + worker + Postgres.
-3. Set secrets on Render: `ODDS_API_KEY`, `BLUESKY_HANDLE`, `BLUESKY_APP_PASSWORD`.
-4. Vercel deploy `frontend/` with `VITE_API_URL=https://your-api.onrender.com`.
-5. Set `FRONTEND_URL` on Render API to your Vercel URL.
+2. Render Blueprint from `render.yaml` — **API + Postgres only** (no paid worker).
+3. Set secrets on Render API: `ODDS_API_KEY`, `BLUESKY_HANDLE`, `BLUESKY_APP_PASSWORD`.
+4. GitHub Actions secrets + run **Daily data collection** once (see `docs/DEPLOY_RENDER.md`).
+5. Vercel deploy `frontend/` with `VITE_API_URL=https://your-api.onrender.com`.
+6. Set `FRONTEND_URL` on Render API to your Vercel URL.
 
-**Collection schedule (production):** all sources **once per 24 hours** (`COLLECT_INTERVAL_HOURS=24`) to protect Render + Odds free tier.
+**Collection (production):** GitHub Actions **once per day** (free) — laptop not required.
 
 ---
 

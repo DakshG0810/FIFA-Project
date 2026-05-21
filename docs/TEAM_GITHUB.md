@@ -30,7 +30,7 @@ git remote add origin https://github.com/YOUR_ORG/YOUR_REPO.git
 git push -u origin main
 ```
 
-3. Complete `docs/DEPLOY_RENDER.md` so API + worker + DB are live.
+3. Complete `docs/DEPLOY_RENDER.md` so API + DB are live and GitHub Actions runs daily collection.
 4. Share with the team:
    - Repo URL
    - Vercel dashboard URL
@@ -65,7 +65,7 @@ git push -u origin feature/my-change
 
 Open a Pull Request on GitHub → review → merge to `main` → Vercel auto-redeploys frontend.
 
-Backend changes: merge to `main` → Render auto-redeploys API and worker.
+Backend changes: merge to `main` → Render auto-redeploys API; collectors run on the daily Actions schedule.
 
 ---
 
@@ -75,7 +75,8 @@ Backend changes: merge to `main` → Render auto-redeploys API and worker.
 |--------|----------------------|
 | Teammates (frontend only) | No |
 | Teammates (backend collectors locally) | Only if testing collectors on laptop |
-| Render (production) | Yes — set in Render dashboard |
+| Render (production API) | Yes — set in Render dashboard |
+| GitHub Actions (daily collect) | Yes — repo **Secrets** (`DATABASE_URL` external, Odds, Bluesky) |
 
 ---
 
