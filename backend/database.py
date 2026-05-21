@@ -19,6 +19,47 @@ if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 USE_POSTGRES = bool(DATABASE_URL)
 
+
+class _QueryResult:
+    """Wraps a DB cursor so conn.execute(...).fetchall() works everywhere."""
+
+    def __init__(self, cursor):
+        self._cursor = cursor
+
+    def fetchone(self):
+        return self._cursor.fetchone()
+
+    def fetchall(self):
+        return self._cursor.fetchall()
+
+
+class DbConnection:
+    """
+    SQLite (3.12+) and psycopg2 both support conn.execute in our API layer.
+    PostgreSQL raw connections do not — this adapter adds execute().
+    """
+
+    def __init__(self, conn):
+        self._conn = conn
+
+    def execute(self, query, params=None):
+        cur = self._conn.cursor()
+        if params is not None:
+            cur.execute(query, params)
+        else:
+            cur.execute(query)
+        return _QueryResult(cur)
+
+    def cursor(self):
+        return self._conn.cursor()
+
+    def commit(self):
+        self._conn.commit()
+
+    def close(self):
+        self._conn.close()
+
+
 def get_connection():
     if USE_POSTGRES:
         import psycopg2
@@ -27,8 +68,8 @@ def get_connection():
         kwargs = {"cursor_factory": RealDictCursor}
         if "sslmode=" not in DATABASE_URL:
             kwargs["sslmode"] = "require"
-        conn = psycopg2.connect(DATABASE_URL, **kwargs)
-        return conn
+        raw = psycopg2.connect(DATABASE_URL, **kwargs)
+        return DbConnection(raw)
     else:
         conn = sqlite3.connect("wc_dashboard.db")
         conn.row_factory = sqlite3.Row
