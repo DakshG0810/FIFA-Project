@@ -53,7 +53,10 @@ app.include_router(analytics_router)
 
 @app.on_event("startup")
 def startup():
-    init_db()
+    try:
+        init_db()
+    except Exception as e:
+        print(f"[DB] Startup init warning: {e}")
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 

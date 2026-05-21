@@ -88,6 +88,7 @@ Schedule: **06:00 UTC daily** (edit `.github/workflows/daily-collect.yml` to cha
 
 | Problem | Fix |
 |---------|-----|
+| **Deploy failed** for pulsecup-api | Open service → **Logs** / **Events**. Pull latest `main` (Postgres `RealDictCursor` + Python 3.12 fix), then **Manual Deploy** |
 | Render asks for card | You selected a **paid** plan or old Blueprint with **worker** — use current `render.yaml` (API + DB only) |
 | Actions fails on DB | `DATABASE_URL` must be **External** connection string |
 | `bluesky: empty` after deploy | Run **Actions → Daily data collection** manually once |

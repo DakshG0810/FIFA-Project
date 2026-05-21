@@ -22,7 +22,12 @@ USE_POSTGRES = bool(DATABASE_URL)
 def get_connection():
     if USE_POSTGRES:
         import psycopg2
-        conn = psycopg2.connect(DATABASE_URL)
+        from psycopg2.extras import RealDictCursor
+
+        kwargs = {"cursor_factory": RealDictCursor}
+        if "sslmode=" not in DATABASE_URL:
+            kwargs["sslmode"] = "require"
+        conn = psycopg2.connect(DATABASE_URL, **kwargs)
         return conn
     else:
         conn = sqlite3.connect("wc_dashboard.db")
