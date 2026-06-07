@@ -20,7 +20,7 @@ import {
 type SortMode = "mentions" | "most_positive" | "most_negative" | "positive_pct"
 
 const OVERALL_SCORE_CALC =
-  "Each Bluesky post is analyzed for tone, averaged per collection run, then averaged across all runs for that team."
+  "Each Bluesky post is analyzed for tone, averaged per collection day, then combined across days for that team. All 48 teams are listed; the Overview card uses a minimum post count so tiny samples do not win."
 
 const SORT_TABS: {
   key: SortMode
@@ -86,13 +86,9 @@ function sortTeams(rows: SentimentRow[], mode: SortMode) {
   const copy = [...rows]
   switch (mode) {
     case "most_positive":
-      return copy
-        .filter((t) => (t.mentions || 0) >= minMentionsForRanking(rows))
-        .sort((a, b) => (b.compound || 0) - (a.compound || 0))
+      return copy.sort((a, b) => (b.compound || 0) - (a.compound || 0))
     case "most_negative":
-      return copy
-        .filter((t) => (t.mentions || 0) >= minMentionsForRanking(rows))
-        .sort((a, b) => (a.compound || 0) - (b.compound || 0))
+      return copy.sort((a, b) => (a.compound || 0) - (b.compound || 0))
     case "positive_pct":
       return copy.sort((a, b) => (b.positive || 0) - (a.positive || 0))
     default:
@@ -173,16 +169,20 @@ export default function Sentiment() {
           ) : (
             <>
               <div className="hidden sm:flex items-center gap-3 px-4 py-2 text-[10px] uppercase tracking-wider text-white/35 border-b border-white/10">
+                <span className="w-5 text-right shrink-0">#</span>
                 <span className="w-7 shrink-0" aria-hidden />
                 <span className="w-28 shrink-0">Team</span>
                 <span className="flex-1">Tone</span>
                 <span className="w-16 text-right shrink-0">Posts</span>
                 <span className="w-14 text-right shrink-0">Score</span>
               </div>
-              {sorted.map((team) => {
+              {sorted.map((team, index) => {
                 const pos = Math.round((team.positive || 0) * 100)
                 const neg = Math.round((team.negative || 0) * 100)
                 const comp = team.compound || 0
+                const lowSample =
+                  (sort === "most_positive" || sort === "most_negative") &&
+                  (team.mentions || 0) < minMentionsForRanking(data)
                 return (
                   <button
                     key={team.team}
@@ -191,9 +191,14 @@ export default function Sentiment() {
                     className={`w-full flex items-center gap-3 rounded-xl px-4 py-3 border transition-all text-left ${
                       selected === team.team
                         ? "bg-emerald-500/10 border-emerald-500/30"
-                        : "bg-white/5 border-white/5 hover:bg-white/8 hover:border-white/10"
+                        : lowSample
+                          ? "bg-white/[0.02] border-white/5 opacity-60 hover:opacity-80"
+                          : "bg-white/5 border-white/5 hover:bg-white/8 hover:border-white/10"
                     }`}
                   >
+                    <span className="text-white/25 text-xs font-mono w-5 text-right shrink-0">
+                      {index + 1}
+                    </span>
                     <TeamFlagImg team={team.team} size={18} />
                     <span className="text-white text-sm font-medium w-28 shrink-0">{team.team}</span>
                     <div className="flex-1 min-w-0">

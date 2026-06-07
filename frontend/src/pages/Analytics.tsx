@@ -34,7 +34,7 @@ const METHODOLOGY_INTEREST_ODDS =
 
 const METHODOLOGY_NARRATIVE =
 
-  "Tracks how Bluesky fan tone shifts day by day for each team. Each point is one calendar day: we average post sentiment (VADER compound score from −1 negative to +1 positive) across posts collected that day. Select up to 4 teams to compare narrative momentum over time."
+  "How positive or negative Bluesky posts about each team sound, tracked day by day. Each point is one calendar day — post tone is averaged for that day on a scale from −1 (very negative) to +1 (very positive). Up to 4 teams can be compared to see how fan mood shifts over time."
 
 
 

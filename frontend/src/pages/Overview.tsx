@@ -75,6 +75,7 @@ export default function Overview() {
         />
         <StatCard
           label="Most positively talked about"
+          labelNote="Only teams with enough Bluesky posts are counted — at least 20 posts and 5% of the most-discussed team — so small samples are excluded."
           value={
             fanFavourite ? (
               <>

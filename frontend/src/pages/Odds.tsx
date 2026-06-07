@@ -7,6 +7,8 @@ import LoadingSkeleton from "../components/LoadingSkeleton"
 import DataBadge from "../components/DataBadge"
 import { useDataMode } from "../hooks/useDataMode"
 import { pickFanFavourite } from "../utils/fanFavourite"
+
+const MOST_POSITIVE_LABEL = "Most positively talked about"
 import { pickBookmakerFavourite } from "../utils/bookmakerFavourite"
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts"
 
@@ -105,8 +107,8 @@ export default function Odds() {
                   </div>
                   <div className="text-white font-bold text-sm mt-2">{team.team}</div>
                   {isFanFav && (
-                    <span className="inline-block mt-1 text-[10px] uppercase tracking-wider text-sky-300 bg-sky-500/20 border border-sky-400/30 rounded-full px-2 py-0.5">
-                      Top positive buzz
+                    <span className="inline-block mt-1 max-w-full text-[9px] leading-tight text-sky-300 bg-sky-500/20 border border-sky-400/30 rounded-full px-2 py-0.5">
+                      {MOST_POSITIVE_LABEL}
                     </span>
                   )}
                   <div className="text-emerald-400 text-xl font-black mt-1 font-mono">
@@ -160,8 +162,11 @@ export default function Odds() {
                   <span className="text-white text-sm font-medium flex-1 flex items-center gap-2 min-w-0">
                     <span className="truncate">{team.team}</span>
                     {isFanFav && (
-                      <span className="shrink-0 text-[9px] uppercase tracking-wider text-sky-300 bg-sky-500/20 border border-sky-400/30 rounded-full px-1.5 py-0.5">
-                        Fan fav
+                      <span
+                        className="shrink-0 text-[8px] leading-tight text-sky-300 bg-sky-500/20 border border-sky-400/30 rounded-full px-1.5 py-0.5 max-w-[9rem] sm:max-w-none"
+                        title={MOST_POSITIVE_LABEL}
+                      >
+                        {MOST_POSITIVE_LABEL}
                       </span>
                     )}
                   </span>
