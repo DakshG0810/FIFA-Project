@@ -45,6 +45,9 @@ export default function InfluencerTracker() {
           ))}
         </div>
       </div>
+      <p className="text-white/40 text-xs">
+        Reach = likes + reposts on WC-related Bluesky posts (demo accounts filtered out)
+      </p>
 
       {loading ? (
         <LoadingSkeleton rows={5} />

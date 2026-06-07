@@ -1,16 +1,18 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom"
+import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom"
+import { Analytics } from "@vercel/analytics/react"
 import Navbar from "./components/Navbar"
 import DataFreshnessBar from "./components/DataFreshnessBar"
 import Overview  from "./pages/Overview"
 import Sentiment from "./pages/Sentiment"
 import Odds      from "./pages/Odds"
 import Trends    from "./pages/Trends"
-import Analytics from "./pages/Analytics"
+import AnalyticsPage from "./pages/Analytics"
 
-export default function App() {
+function AppShell() {
+  const location = useLocation()
+
   return (
-    <BrowserRouter>
-      <div className="min-h-screen bg-[#060608] text-white">
+      <div className="min-h-[100dvh] w-full max-w-[100vw] overflow-x-hidden bg-[#060608] text-white">
 
         {/* Subtle background texture */}
         <div className="fixed inset-0 pointer-events-none">
@@ -20,18 +22,27 @@ export default function App() {
 
         <Navbar />
 
-        <main className="relative max-w-7xl mx-auto px-4 pt-20 pb-16">
+        <main className="relative w-full max-w-7xl mx-auto px-3 sm:px-4 pt-16 sm:pt-20 pb-[calc(5rem+env(safe-area-inset-bottom,0px))] sm:pb-16">
           <Routes>
             <Route path="/"          element={<Overview  />} />
             <Route path="/sentiment" element={<Sentiment />} />
             <Route path="/odds"      element={<Odds      />} />
             <Route path="/trends"    element={<Trends    />} />
-            <Route path="/analytics" element={<Analytics />} />
+            <Route path="/analytics" element={<AnalyticsPage />} />
           </Routes>
         </main>
 
         <DataFreshnessBar />
+        {/* Tracks page views per route (Buzz, Search Interest, etc.) — production only on Vercel */}
+        <Analytics path={location.pathname} />
       </div>
+  )
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <AppShell />
     </BrowserRouter>
   )
 }

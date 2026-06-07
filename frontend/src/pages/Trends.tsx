@@ -3,6 +3,7 @@ import { useApi } from "../hooks/useApi"
 import { api } from "../api"
 import type { TrendsEntry } from "../types"
 import BuzzwordCloud from "../components/BuzzwordCloud"
+import GeographicHeatmap from "../components/GeographicHeatmap"
 import TeamFlag from "../components/TeamFlag"
 import LoadingSkeleton from "../components/LoadingSkeleton"
 import DataBadge from "../components/DataBadge"
@@ -19,13 +20,13 @@ export default function Trends() {
     .map((t) => ({ team: t.team, score: t.interest_score }))
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 sm:space-y-8 w-full max-w-full">
       <div>
         <div className="flex items-center gap-2">
-          <h1 className="text-3xl font-bold text-white">Google Trends</h1>
+          <h1 className="text-3xl font-bold text-white">Search Interest</h1>
           <DataBadge mode={badge} />
         </div>
-        <p className="text-white/40 text-sm mt-1">Search interest 0–100 · worldwide</p>
+        <p className="text-white/40 text-sm mt-1">Google Trends · worldwide search & geographic heatmap</p>
       </div>
 
       <BuzzwordCloud />
@@ -36,18 +37,31 @@ export default function Trends() {
           <LoadingSkeleton rows={6} />
         ) : (
           <>
-            <ResponsiveContainer width="100%" height={320}>
-              <BarChart data={chartData.slice(0, 16)}>
-                <XAxis dataKey="team" tick={{ fill: "#ffffff50", fontSize: 9 }} angle={-35} textAnchor="end" height={70} />
+            <div className="w-full max-w-full overflow-x-auto">
+            <ResponsiveContainer width="100%" height={280} minWidth={320}>
+              <BarChart data={chartData} margin={{ bottom: 8, left: 4, right: 8 }}>
+                <XAxis
+                  dataKey="team"
+                  tick={{ fill: "#ffffff50", fontSize: 9 }}
+                  angle={-35}
+                  textAnchor="end"
+                  height={72}
+                  interval={0}
+                />
                 <YAxis domain={[0, 100]} tick={{ fill: "#ffffff40", fontSize: 10 }} />
-                <Tooltip contentStyle={{ background: "#111", border: "1px solid #333" }} />
+                <Tooltip
+                  contentStyle={{ background: "#111", border: "1px solid #333", borderRadius: 8 }}
+                  labelStyle={{ color: "#fff" }}
+                  itemStyle={{ color: "#fff" }}
+                />
                 <Bar dataKey="score" radius={[4, 4, 0, 0]}>
-                  {chartData.slice(0, 16).map((_, i) => (
+                  {chartData.map((_, i) => (
                     <Cell key={i} fill={`hsl(160, 65%, ${38 + (i % 6) * 6}%)`} />
                   ))}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
+            </div>
 
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {chartData.map((team, index) => (
@@ -62,6 +76,8 @@ export default function Trends() {
           </>
         )}
       </div>
+
+      <GeographicHeatmap />
     </div>
   )
 }

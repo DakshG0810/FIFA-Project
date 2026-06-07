@@ -8,8 +8,26 @@
   box-sizing: border-box;
 }
 
+html {
+  width: 100%;
+  overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
+  width: 100%;
+  margin: 0;
+  overflow-x: hidden;
+  min-height: 100dvh;
   font-family: "Space Grotesk", system-ui, sans-serif;
+  overscroll-behavior-x: none;
+  background-color: #060608;
+}
+
+#root {
+  width: 100%;
+  overflow-x: hidden;
+  min-height: 100dvh;
 }
 
 .font-mono, [class*="font-mono"] {

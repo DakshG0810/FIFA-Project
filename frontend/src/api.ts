@@ -5,6 +5,7 @@ import type {
   HistoryPoint,
   Influencer,
   Keyword,
+  InterestOddsData,
   NarrativePoint,
   OddsEntry,
   SentimentRow,
@@ -36,11 +37,14 @@ export const api = {
   leaderboard: () => get<TeamSentiment[]>("/api/leaderboard", []),
   sentiment: (hours = 24, source?: string) =>
     get<SentimentRow[]>(
-      `/api/sentiment?hours=${hours}${source ? `&source=${source}` : ""}`,
+      `/api/sentiment?hours=${hours}${source ? `&source=${encodeURIComponent(source)}` : ""}`,
       []
     ),
-  teamHistory: (team: string) =>
-    get<HistoryPoint[]>(`/api/sentiment/${encodeURIComponent(team)}/history`, []),
+  teamHistory: (team: string, source = "bluesky") =>
+    get<HistoryPoint[]>(
+      `/api/sentiment/${encodeURIComponent(team)}/history?source=${encodeURIComponent(source)}`,
+      []
+    ),
   odds: () => get<OddsEntry[]>("/api/odds", []),
   oddsHistory: (team: string) =>
     get<{ captured_at: string; win_probability: number; decimal_odds: number }[]>(
@@ -48,14 +52,16 @@ export const api = {
       []
     ),
   trends: () => get<TrendsEntry[]>("/api/trends", []),
-  keywords: (limit = 50, category?: string) =>
+  keywords: (limit = 80, category?: string, source?: string, hours = 168) =>
     get<Keyword[]>(
-      `/api/keywords?limit=${limit}${category && category !== "all" ? `&category=${category}` : ""}`,
+      `/api/keywords?limit=${limit}&hours=${hours}${
+        category && category !== "all" ? `&category=${encodeURIComponent(category)}` : ""
+      }${source ? `&source=${encodeURIComponent(source)}` : ""}`,
       []
     ),
   spikes: () => get<SpikeAlert[]>("/api/spikes", []),
   buzz: () => get<BuzzTeam[]>("/api/buzz", []),
-  spikeHeatmap: () => get<SpikeHeatmapData>("/api/spikes/heatmap", { teams: [], buckets: 48, hours: 24, cells: [], max_mentions: 1 }),
+  spikeHeatmap: () => get<SpikeHeatmapData>("/api/spikes/heatmap", { teams: [], buckets: 0, dates: [], cells: [], max_mentions: 1 }),
   clusters: (team?: string) =>
     get<{ clusters: TopicCluster[]; team_filter: string | null }>(
       `/api/clusters${team ? `?team=${encodeURIComponent(team)}` : ""}`,
@@ -69,8 +75,14 @@ export const api = {
       { countries: [], highlight_team: null }
     ),
   narrative: (teams: string[]) =>
-    get<{ teams: string[]; points: NarrativePoint[] }>(
+    get<{ teams: string[]; points: NarrativePoint[]; first_collection_date?: string | null }>(
       `/api/narrative?teams=${teams.map(encodeURIComponent).join(",")}`,
       { teams: [], points: [] }
     ),
+  interestOdds: () =>
+    get<InterestOddsData>("/api/interest-odds", {
+      convergence: [],
+      higher_odds_lower_interest: [],
+      higher_interest_lower_odds: [],
+    }),
 }

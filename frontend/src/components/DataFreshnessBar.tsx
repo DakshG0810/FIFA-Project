@@ -53,8 +53,8 @@ export default function DataFreshnessBar() {
   ]
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-40 bg-black/80 backdrop-blur border-t border-white/10">
-      <div className="max-w-7xl mx-auto px-4 py-1.5 flex items-center gap-6 overflow-x-auto">
+    <div className="fixed bottom-0 left-0 right-0 z-40 bg-black/80 backdrop-blur border-t border-white/10 pb-[env(safe-area-inset-bottom,0px)]">
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 py-1.5 flex items-center gap-4 sm:gap-6 overflow-x-auto">
 
         <span className="text-white/30 text-xs shrink-0">
           Data freshness

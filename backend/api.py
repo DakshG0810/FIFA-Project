@@ -21,7 +21,7 @@ import os
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from database import get_connection, init_db, ph
-from teams import TEAM_NAMES
+from teams import TEAM_NAMES, TEAMS, CONFEDERATION_COLORS
 from datetime import datetime, timedelta
 from dotenv import load_dotenv, find_dotenv
 from api_analytics import router as analytics_router
@@ -65,6 +65,26 @@ def since(hours=24):
 
 def rows_to_list(rows):
     return [dict(r) for r in rows]
+
+def fill_sentiment_rows(rows, source: str | None = None):
+    """Ensure all 48 WC teams appear, with zeros when no data yet."""
+    data = {r["team"]: r for r in rows if r["team"] in TEAM_NAMES}
+    result = []
+    for team in TEAM_NAMES:
+        r = data.get(team)
+        entry = {
+            "team": team,
+            "positive": round((r["positive"] if r else 0) or 0, 4),
+            "negative": round((r["negative"] if r else 0) or 0, 4),
+            "compound": round((r["compound"] if r else 0) or 0, 4),
+            "mentions": (r["mentions"] if r else 0) or 0,
+            "total_reach": (r["total_reach"] if r else 0) or 0,
+        }
+        if source:
+            entry["source"] = (r["source"] if r else source)
+        result.append(entry)
+    result.sort(key=lambda x: x["mentions"], reverse=True)
+    return result
 
 def source_mode(last_iso: str | None, stale_hours: float | None = None) -> str:
     if stale_hours is None:
@@ -136,27 +156,44 @@ def status():
 
 @app.get("/api/sentiment")
 def get_sentiment(
-    hours: int = Query(24, description="Hours to look back"),
+    hours: int = Query(24, description="Hours to look back; 0 = all time"),
     source: str = Query(None, description="Filter by source: bluesky or google_trends"),
 ):
     """Latest combined sentiment per team."""
     conn = get_connection()
     p = ph()
     if source:
-        rows = conn.execute(f"""
-            SELECT team,
-                   AVG(positive)  as positive,
-                   AVG(negative)  as negative,
-                   AVG(compound)  as compound,
-                   SUM(mention_count) as mentions,
-                   SUM(reach_score)   as total_reach,
-                   MAX(source) as source
-            FROM sentiment_snapshots
-            WHERE captured_at > {p} AND source = {p}
-            GROUP BY team
-            ORDER BY mentions DESC
-        """, (since(hours), source)).fetchall()
+        if hours <= 0:
+            rows = conn.execute(f"""
+                SELECT team,
+                       AVG(positive)  as positive,
+                       AVG(negative)  as negative,
+                       AVG(compound)  as compound,
+                       SUM(mention_count) as mentions,
+                       SUM(reach_score)   as total_reach,
+                       MAX(source) as source
+                FROM sentiment_snapshots
+                WHERE source = {p}
+                GROUP BY team
+                ORDER BY mentions DESC
+            """, (source,)).fetchall()
+        else:
+            rows = conn.execute(f"""
+                SELECT team,
+                       AVG(positive)  as positive,
+                       AVG(negative)  as negative,
+                       AVG(compound)  as compound,
+                       SUM(mention_count) as mentions,
+                       SUM(reach_score)   as total_reach,
+                       MAX(source) as source
+                FROM sentiment_snapshots
+                WHERE captured_at > {p} AND source = {p}
+                GROUP BY team
+                ORDER BY mentions DESC
+            """, (since(hours), source)).fetchall()
     else:
+        time_clause = "" if hours <= 0 else f"WHERE captured_at > {p}"
+        params = () if hours <= 0 else (since(hours),)
         rows = conn.execute(f"""
             SELECT team,
                    AVG(positive)  as positive,
@@ -165,33 +202,49 @@ def get_sentiment(
                    SUM(mention_count) as mentions,
                    SUM(reach_score)   as total_reach
             FROM sentiment_snapshots
-            WHERE captured_at > {p}
+            {time_clause}
             GROUP BY team
             ORDER BY mentions DESC
-        """, (since(hours),)).fetchall()
+        """, params).fetchall()
     conn.close()
-    return rows_to_list(rows)
+    return fill_sentiment_rows(rows, source)
+
+@app.get("/api/teams")
+def get_teams():
+    """All 48 World Cup 2026 teams with confederation metadata."""
+    return [
+        {
+            "team": name,
+            "confederation": TEAMS[name]["confederation"],
+            "confederation_color": CONFEDERATION_COLORS.get(TEAMS[name]["confederation"], "#888780"),
+        }
+        for name in TEAM_NAMES
+    ]
 
 @app.get("/api/sentiment/{team}/history")
-def get_team_sentiment_history(team: str, days: int = Query(30)):
-    """Sentiment time series for one team."""
+def get_team_sentiment_history(
+    team: str,
+    days: int = Query(365),
+    source: str = Query("bluesky", description="bluesky or google_trends"),
+):
+    """Sentiment time series — one point per collection day."""
     conn = get_connection()
     p = ph()
     rows = conn.execute(f"""
-        SELECT substr(captured_at, 1, 13) as captured_at, source,
+        SELECT substr(captured_at, 1, 10) as captured_at,
                AVG(compound)  as compound,
                SUM(mention_count) as mentions
         FROM sentiment_snapshots
-        WHERE team = {p} AND captured_at > {p}
-        GROUP BY substr(captured_at, 1, 13), source
-        ORDER BY substr(captured_at, 1, 13) ASC
-    """, (team, since(days * 24))).fetchall()
+        WHERE team = {p} AND source = {p} AND captured_at > {p}
+        GROUP BY substr(captured_at, 1, 10)
+        ORDER BY substr(captured_at, 1, 10) ASC
+    """, (team, source, since(days * 24))).fetchall()
     conn.close()
     return rows_to_list(rows)
 
 @app.get("/api/odds")
 def get_odds():
-    """Latest win probability per team."""
+    """Latest win probability per team — all 48 WC nations."""
     conn = get_connection()
     p = ph()
     placeholders = ",".join([p] * len(TEAM_NAMES))
@@ -201,9 +254,20 @@ def get_odds():
         WHERE team IN ({placeholders})
         ORDER BY team, captured_at DESC
     """, tuple(TEAM_NAMES)).fetchall()
-    rows = sorted(rows, key=lambda r: r["win_probability"] or 0, reverse=True)
     conn.close()
-    return rows_to_list(rows)
+    data = {r["team"]: r for r in rows}
+    result = []
+    for team in TEAM_NAMES:
+        r = data.get(team)
+        result.append({
+            "team": team,
+            "win_probability": (r["win_probability"] if r else None),
+            "decimal_odds": (r["decimal_odds"] if r else None),
+            "bookmaker": (r["bookmaker"] if r else None),
+            "captured_at": (r["captured_at"] if r else None),
+        })
+    result.sort(key=lambda x: x["win_probability"] or 0, reverse=True)
+    return result
 
 @app.get("/api/odds/{team}/history")
 def get_odds_history(team: str, days: int = Query(30)):
@@ -228,32 +292,56 @@ def get_trends():
         FROM trends_snapshots
         ORDER BY team, captured_at DESC
     """).fetchall()
-    rows = sorted(rows, key=lambda r: r["interest_score"] or 0, reverse=True)
     conn.close()
-    return rows_to_list(rows)
+    data = {r["team"]: r for r in rows if r["team"] in TEAM_NAMES}
+    result = []
+    for team in TEAM_NAMES:
+        r = data.get(team)
+        result.append({
+            "team": team,
+            "interest_score": (r["interest_score"] if r else 0) or 0,
+            "region": (r["region"] if r else "worldwide"),
+            "captured_at": r["captured_at"] if r else None,
+        })
+    result.sort(key=lambda x: x["interest_score"], reverse=True)
+    return result
 
 @app.get("/api/keywords")
 def get_keywords(
-    hours: int = Query(24),
-    limit: int = Query(50),
+    hours: int = Query(168, description="Hours to look back; 0 = all time"),
+    limit: int = Query(80),
     category: str = Query(None, description="all|players|events|emotions|tactical"),
+    source: str = Query(None, description="bluesky or google_trends"),
 ):
-    """Top keywords in the last N hours."""
-    from topics import keyword_category
+    """Top buzz keywords — Bluesky post terms or Google Trends search buzz."""
+    from topics import keyword_category, is_football_keyword
 
     conn = get_connection()
     p = ph()
-    rows = conn.execute(f"""
-        SELECT keyword, SUM(frequency) as total_freq, MAX(team_association) as team_association
-        FROM keyword_snapshots
-        WHERE captured_at > {p}
-        GROUP BY keyword
-        ORDER BY total_freq DESC
-        LIMIT {p}
-    """, (since(hours), limit * 3)).fetchall()
+    time_clause = "" if hours <= 0 else f"AND captured_at > {p}"
+    time_params: tuple = () if hours <= 0 else (since(hours),)
+
+    if source:
+        rows = conn.execute(f"""
+            SELECT keyword, SUM(frequency) as total_freq, MAX(team_association) as team_association
+            FROM keyword_snapshots
+            WHERE source = {p} {time_clause}
+            GROUP BY keyword
+            ORDER BY total_freq DESC
+            LIMIT {p}
+        """, (source, *time_params, limit * 3)).fetchall()
+    else:
+        rows = conn.execute(f"""
+            SELECT keyword, SUM(frequency) as total_freq, MAX(team_association) as team_association
+            FROM keyword_snapshots
+            WHERE 1=1 {time_clause}
+            GROUP BY keyword
+            ORDER BY total_freq DESC
+            LIMIT {p}
+        """, (*time_params, limit * 3)).fetchall()
     conn.close()
 
-    result = rows_to_list(rows)
+    result = [r for r in rows_to_list(rows) if is_football_keyword(r["keyword"])]
     if category and category != "all":
         result = [r for r in result if keyword_category(r["keyword"]) == category]
     return result[:limit]
@@ -275,9 +363,9 @@ def get_leaderboard():
                SUM(mention_count) as mentions,
                SUM(reach_score) as reach
         FROM sentiment_snapshots
-        WHERE captured_at > {p} AND source = {p}
+        WHERE source = {p}
         GROUP BY team
-    """, (since(48), "bluesky")).fetchall()
+    """, ("bluesky",)).fetchall()
 
     odds = conn.execute("""
         SELECT team, win_probability
@@ -293,9 +381,9 @@ def get_leaderboard():
 
     momentum_rows = conn.execute(f"""
         SELECT team, compound, captured_at FROM sentiment_snapshots
-        WHERE source = {p} AND captured_at > {p}
+        WHERE source = {p}
         ORDER BY captured_at ASC
-    """, ("bluesky", since(12))).fetchall()
+    """, ("bluesky",)).fetchall()
 
     conn.close()
 
@@ -318,16 +406,17 @@ def get_leaderboard():
             else:
                 momentum_map[team] = "flat"
 
+    sentiment_map = {row["team"]: row for row in sentiment if row["team"] in TEAM_NAMES}
     result = []
-    for row in sentiment:
-        team = row["team"]
+    for team in TEAM_NAMES:
+        row = sentiment_map.get(team)
         result.append({
             "team":            team,
-            "compound":        round(row["compound"] or 0, 4),
-            "positive":        round(row["positive"] or 0, 4),
-            "negative":        round(row["negative"] or 0, 4),
-            "mentions":        row["mentions"] or 0,
-            "reach":           row["reach"] or 0,
+            "compound":        round((row["compound"] if row else 0) or 0, 4),
+            "positive":        round((row["positive"] if row else 0) or 0, 4),
+            "negative":        round((row["negative"] if row else 0) or 0, 4),
+            "mentions":        (row["mentions"] if row else 0) or 0,
+            "reach":           (row["reach"] if row else 0) or 0,
             "win_probability": odds_map.get(team),
             "trends_score":    trends_map.get(team),
             "momentum":        momentum_map.get(team, "flat"),

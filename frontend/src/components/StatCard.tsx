@@ -1,6 +1,8 @@
+import type { ReactNode } from "react"
+
 interface Props {
   label: string
-  value: string | number
+  value: string | number | ReactNode
   sub?: string
   accent?: "green" | "red" | "amber" | "blue"
   loading?: boolean
@@ -20,7 +22,7 @@ export default function StatCard({ label, value, sub, accent = "green", loading 
       {loading ? (
         <div className="h-8 w-24 bg-white/10 rounded animate-pulse" />
       ) : (
-        <span className={`text-2xl font-bold ${accents[accent]}`}>{value}</span>
+        <div className={`text-2xl font-bold ${accents[accent]} flex items-center gap-2`}>{value}</div>
       )}
       {sub && <span className="text-white/40 text-xs">{sub}</span>}
     </div>

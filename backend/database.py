@@ -134,9 +134,15 @@ def init_db():
             captured_at TEXT NOT NULL,
             keyword TEXT NOT NULL,
             frequency INTEGER DEFAULT 0,
-            team_association TEXT
+            team_association TEXT,
+            source TEXT DEFAULT 'bluesky'
         )
     """)
+
+    try:
+        cursor.execute("ALTER TABLE keyword_snapshots ADD COLUMN source TEXT DEFAULT 'bluesky'")
+    except Exception:
+        pass
 
     # trends_snapshots
     # Google Trends interest score per team per region
@@ -165,6 +171,23 @@ def init_db():
         )
     """)
 
+    # cluster_posts — real Bluesky posts for topic cluster samples
+    cursor.execute(f"""
+        CREATE TABLE IF NOT EXISTS cluster_posts (
+            id {'SERIAL' if USE_POSTGRES else 'INTEGER'} PRIMARY KEY {'AUTOINCREMENT' if not USE_POSTGRES else ''},
+            captured_at TEXT NOT NULL,
+            cluster TEXT NOT NULL,
+            team TEXT,
+            handle TEXT NOT NULL,
+            display_name TEXT,
+            text TEXT NOT NULL,
+            likes INTEGER DEFAULT 0,
+            reposts INTEGER DEFAULT 0,
+            reach INTEGER DEFAULT 0,
+            post_uri TEXT
+        )
+    """)
+
     # influencer_snapshots — top Bluesky accounts by reach
     cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS influencer_snapshots (
@@ -184,6 +207,7 @@ def init_db():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_odds_team_time ON odds_snapshots(team, captured_at)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_trends_team_time ON trends_snapshots(team, captured_at)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_influencer_time ON influencer_snapshots(captured_at)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_cluster_posts_cluster ON cluster_posts(cluster, captured_at)")
 
     conn.commit()
     conn.close()

@@ -2,16 +2,23 @@
 Additional analytics API routes for PulseCup modules.
 """
 
-import hashlib
-import json
+import re
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Query
 
 from database import get_connection, ph
+from geo_regions import (
+    COUNTRY_CODES, COUNTRY_NAMES, TEAM_HOME_ISO, confed_boost,
+)
 from teams import TEAMS, TEAM_NAMES, CONFEDERATION_COLORS
-from topics import CLUSTERS, CLUSTER_META, assign_cluster, keyword_category
+from topics import CLUSTERS, CLUSTER_META, assign_cluster, is_wc_post_text
+
+DEMO_HANDLE_RE = re.compile(r"^fan\d+\.bsky\.social$", re.I)
+CONVERGENCE_TOP_N = 12
+CONVERGENCE_MAX_GAP = 4
+DIVERGENCE_MIN_GAP = 5
 
 router = APIRouter()
 
@@ -69,32 +76,10 @@ def bucket_index(iso_ts: str, hours_back: int = 24, buckets: int = 48) -> int | 
     return int((hours_back - delta_h) / (hours_back / buckets))
 
 
-# ISO 3166-1 alpha-2 codes for world map
-COUNTRY_CODES = [
-    "US", "CA", "MX", "BR", "AR", "GB", "FR", "DE", "ES", "IT", "PT", "NL",
-    "BE", "CH", "PL", "SE", "NO", "DK", "IE", "AT", "HR", "RS", "TR", "MA",
-    "SN", "NG", "CM", "EG", "ZA", "JP", "KR", "CN", "IN", "AU", "NZ", "SA",
-    "IR", "QA", "EC", "CO", "UY", "CL", "PE", "VE", "VE", "GR", "CZ", "HU",
-    "UA", "RU", "IL", "TH", "VN", "PH", "ID", "MY", "PK", "BD",
-]
-
-COUNTRY_NAMES = {
-    "US": "United States", "CA": "Canada", "MX": "Mexico", "BR": "Brazil",
-    "AR": "Argentina", "GB": "United Kingdom", "FR": "France", "DE": "Germany",
-    "ES": "Spain", "IT": "Italy", "PT": "Portugal", "NL": "Netherlands",
-    "BE": "Belgium", "CH": "Switzerland", "PL": "Poland", "SE": "Sweden",
-    "NO": "Norway", "DK": "Denmark", "IE": "Ireland", "AT": "Austria",
-    "HR": "Croatia", "RS": "Serbia", "TR": "Turkey", "MA": "Morocco",
-    "SN": "Senegal", "NG": "Nigeria", "CM": "Cameroon", "EG": "Egypt",
-    "ZA": "South Africa", "JP": "Japan", "KR": "South Korea", "CN": "China",
-    "IN": "India", "AU": "Australia", "NZ": "New Zealand", "SA": "Saudi Arabia",
-    "IR": "Iran", "QA": "Qatar", "EC": "Ecuador", "CO": "Colombia",
-    "UY": "Uruguay", "CL": "Chile", "PE": "Peru", "VE": "Venezuela",
-    "GR": "Greece", "CZ": "Czech Republic", "HU": "Hungary", "UA": "Ukraine",
-    "RU": "Russia", "IL": "Israel", "TH": "Thailand", "VN": "Vietnam",
-    "PH": "Philippines", "ID": "Indonesia", "MY": "Malaysia", "PK": "Pakistan",
-    "BD": "Bangladesh",
-}
+def rank_by_value(items: list[tuple[str, float]], reverse: bool = True) -> dict[str, int]:
+    """Return team → rank (1 = best)."""
+    ordered = sorted(items, key=lambda x: x[1], reverse=reverse)
+    return {team: i + 1 for i, (team, _) in enumerate(ordered)}
 
 
 @router.get("/api/buzz")
@@ -164,26 +149,38 @@ def get_buzz():
 
 @router.get("/api/spikes/heatmap")
 def get_spike_heatmap():
-    """32 teams × 48 half-hour buckets (24h) of mention volume."""
+    """48 teams × one column per collection day (Bluesky mention volume)."""
     conn = get_connection()
     p = ph()
     rows = conn.execute(
         f"""
         SELECT team, captured_at, mention_count FROM sentiment_snapshots
-        WHERE source = {p} AND captured_at > {p}
+        WHERE source = {p}
+        ORDER BY captured_at ASC
         """,
-        ("bluesky", since(24)),
+        ("bluesky",),
     ).fetchall()
     conn.close()
 
-    grid = {team: [0] * 48 for team in TEAM_NAMES}
+    if not rows:
+        return {
+            "teams": TEAM_NAMES,
+            "buckets": 0,
+            "dates": [],
+            "cells": [],
+            "max_mentions": 1,
+        }
+
+    # One column per day we actually collected (grows +1 after each daily GitHub Action run)
+    dates = sorted({row["captured_at"][:10] for row in rows})
+    date_idx = {d: i for i, d in enumerate(dates)}
+    grid = {team: [0] * len(dates) for team in TEAM_NAMES}
     for row in rows:
         team = row["team"]
-        if team not in grid:
+        day = row["captured_at"][:10]
+        if team not in grid or day not in date_idx:
             continue
-        idx = bucket_index(row["captured_at"])
-        if idx is not None:
-            grid[team][idx] += row["mention_count"] or 0
+        grid[team][date_idx[day]] += row["mention_count"] or 0
 
     max_val = max((max(v) for v in grid.values()), default=1) or 1
     cells = []
@@ -193,13 +190,15 @@ def get_spike_heatmap():
                 "team": team,
                 "bucket": i,
                 "mentions": val,
-                "intensity": round(val / max_val, 3),
+                "intensity": round(val / max_val, 3) if max_val else 0,
             })
 
     return {
         "teams": TEAM_NAMES,
-        "buckets": 48,
-        "hours": 24,
+        "buckets": len(dates),
+        "dates": dates,
+        "first_collection_date": dates[0] if dates else None,
+        "last_collection_date": dates[-1] if dates else None,
         "cells": cells,
         "max_mentions": max_val,
     }
@@ -207,16 +206,28 @@ def get_spike_heatmap():
 
 @router.get("/api/clusters")
 def get_clusters(team: str = Query(None)):
-    """Topic clusters from keywords with sample posts."""
+    """Topic clusters from Bluesky keywords and real stored posts."""
     conn = get_connection()
     p = ph()
+    cutoff = since(168)
     rows = conn.execute(
         f"""
         SELECT keyword, SUM(frequency) as total_freq, MAX(team_association) as team_association
-        FROM keyword_snapshots WHERE captured_at > {p}
+        FROM keyword_snapshots
+        WHERE captured_at > {p} AND source = {p}
         GROUP BY keyword ORDER BY total_freq DESC LIMIT 200
         """,
-        (since(48),),
+        (cutoff, "bluesky"),
+    ).fetchall()
+
+    post_rows = conn.execute(
+        f"""
+        SELECT cluster, team, handle, display_name, text, reach, post_uri
+        FROM cluster_posts
+        WHERE captured_at > {p}
+        ORDER BY reach DESC
+        """,
+        (cutoff,),
     ).fetchall()
     conn.close()
 
@@ -234,48 +245,66 @@ def get_clusters(team: str = Query(None)):
         cluster_volumes[cluster] += freq
         cluster_keywords[cluster].append({"keyword": kw, "freq": freq})
 
-    sample_posts = {
-        "Injuries & fitness": "{team} injury doubt before the tournament — fans worried",
-        "Goals & results": "What a goal! {team} looking unstoppable in World Cup 2026",
-        "Referee & VAR": "VAR decision against {team} was an absolute disgrace",
-        "Tactics & lineup": "{team} pressing and formation looked world class tonight",
-        "Fan banter": "Is {team} overrated or genuinely elite? The debate continues",
-        "Squad & transfers": "{team} squad announcement drops — massive reactions online",
-    }
+    cluster_posts: dict[str, list] = defaultdict(list)
+    seen_posts: dict[str, set[str]] = defaultdict(set)
+    for row in post_rows:
+        cluster = row["cluster"]
+        if cluster not in CLUSTERS:
+            continue
+        if team and row["team"] != team:
+            continue
+        dedupe = row["post_uri"] or (row["text"] or "")[:200]
+        if dedupe in seen_posts[cluster]:
+            continue
+        seen_posts[cluster].add(dedupe)
+        cluster_posts[cluster].append({
+            "text": row["text"],
+            "handle": row["handle"],
+            "reach": row["reach"] or 0,
+        })
+        cluster_volumes[cluster] += 1
 
-    focus = team or "Argentina"
     clusters = []
-    for name, volume in sorted(cluster_volumes.items(), key=lambda x: -x[1]):
+    for name in CLUSTERS:
+        volume = cluster_volumes[name]
         meta = CLUSTER_META.get(name, {"icon": "💬", "id": "general"})
         top_kw = sorted(cluster_keywords[name], key=lambda x: -x["freq"])[:5]
-        posts = [
-            {"text": sample_posts.get(name, "{team} trending on Bluesky").format(team=focus), "handle": "fanpulse.bsky.social", "reach": 120 + i * 30}
-            for i in range(5)
-        ]
+        top_posts = cluster_posts[name][:5]
         clusters.append({
             "id": meta["id"],
             "name": name,
             "icon": meta["icon"],
             "volume": volume,
             "top_keywords": top_kw,
-            "top_posts": posts,
+            "top_posts": top_posts,
         })
 
+    clusters.sort(key=lambda x: -x["volume"])
     return {"clusters": clusters, "team_filter": team}
 
 
 @router.get("/api/influencers")
 def get_influencers(tab: str = Query("all")):
-    """Top 20 Bluesky accounts by reach."""
+    """Top Bluesky accounts by reach on WC-related posts (likes + reposts)."""
     conn = get_connection()
     rows = conn.execute("""
         SELECT handle, display_name, reach_score, primary_team, sentiment, viral_post, captured_at
         FROM influencer_snapshots
-        ORDER BY reach_score DESC LIMIT 20
+        ORDER BY reach_score DESC LIMIT 40
     """).fetchall()
     conn.close()
 
-    influencers = rows_to_list(rows)
+    influencers = []
+    for row in rows_to_list(rows):
+        handle = row.get("handle") or ""
+        if DEMO_HANDLE_RE.match(handle):
+            continue
+        if not is_wc_post_text(row.get("viral_post") or ""):
+            continue
+        influencers.append(row)
+        if len(influencers) >= 20:
+            break
+
     if tab == "amplifiers":
         influencers = [i for i in influencers if (i.get("sentiment") or 0) > 0.25]
     elif tab == "critics":
@@ -284,53 +313,86 @@ def get_influencers(tab: str = Query("all")):
     return influencers
 
 
+def _build_country_team_scores(
+    country_code: str,
+    worldwide: dict[str, int],
+    regional: dict[str, dict[str, int]],
+    team_filter: str | None,
+) -> list[dict]:
+    """Rank teams for one country using regional Trends + confederation fallbacks."""
+    regional_scores = regional.get(country_code, {})
+    has_regional = bool(regional_scores)
+    scores: list[dict] = []
+
+    for t in TEAM_NAMES:
+        if team_filter and t != team_filter:
+            continue
+        score = regional_scores.get(t, 0)
+        if score <= 0:
+            base = worldwide.get(t, 0)
+            boost = confed_boost(t, country_code)
+            score = int(base * boost) if has_regional else int(base * boost * 0.85)
+        scores.append({"team": t, "score": score})
+
+    for t, home_iso in TEAM_HOME_ISO.items():
+        if home_iso != country_code:
+            continue
+        if team_filter and team_filter != t:
+            continue
+        max_other = max((s["score"] for s in scores if s["team"] != t), default=0)
+        for s in scores:
+            if s["team"] == t:
+                s["score"] = max_other + 15
+                break
+
+    scores.sort(key=lambda x: -x["score"])
+    return scores
+
+
 @router.get("/api/trends/regions")
 def get_trend_regions(team: str = Query(None)):
-    """Per-country top teams for geographic heatmap."""
+    """Per-country Google Trends search interest (no Bluesky)."""
     conn = get_connection()
     p = ph()
 
-    regional = conn.execute(
+    regional_rows = conn.execute(
         f"""
-        SELECT team, region, interest_score FROM trends_snapshots
+        SELECT team, region, interest_score, captured_at FROM trends_snapshots
         WHERE region != 'worldwide' AND captured_at > {p}
         """,
-        (since(168),),
+        (since(336),),
     ).fetchall()
 
-    worldwide = conn.execute("""
+    worldwide_rows = conn.execute("""
         SELECT team, interest_score FROM trends_snapshots
         WHERE region = 'worldwide'
         AND captured_at = (SELECT MAX(captured_at) FROM trends_snapshots WHERE region = 'worldwide')
     """).fetchall()
-
-    mentions = conn.execute(
-        f"""
-        SELECT team, SUM(mention_count) as m FROM sentiment_snapshots
-        WHERE source = {p} AND captured_at > {p} GROUP BY team
-        """,
-        ("bluesky", since(48)),
-    ).fetchall()
     conn.close()
 
-    base_scores = {t: 0 for t in TEAM_NAMES}
-    for row in worldwide:
-        if row["team"] in base_scores:
-            base_scores[row["team"]] = row["interest_score"] or 0
-    for row in mentions:
-        if row["team"] in base_scores:
-            base_scores[row["team"]] += (row["m"] or 0) // 2
+    worldwide = {t: 0 for t in TEAM_NAMES}
+    for row in worldwide_rows:
+        if row["team"] in worldwide:
+            worldwide[row["team"]] = row["interest_score"] or 0
+
+    regional: dict[str, dict[str, int]] = defaultdict(dict)
+    latest_capture: dict[str, str] = {}
+    for row in regional_rows:
+        region = row["region"]
+        t = row["team"]
+        if t not in TEAM_NAMES:
+            continue
+        cap = row["captured_at"] or ""
+        if region not in latest_capture or cap > latest_capture[region]:
+            latest_capture[region] = cap
+            regional[region] = {}
+        if cap == latest_capture[region]:
+            regional[region][t] = max(regional[region].get(t, 0), row["interest_score"] or 0)
 
     countries = []
     for code in COUNTRY_CODES:
-        scores = []
-        for t, base in base_scores.items():
-            if team and t != team:
-                continue
-            jitter = int(hashlib.md5(f"{code}{t}".encode()).hexdigest()[:4], 16) % 35
-            scores.append({"team": t, "score": base + jitter})
-        scores.sort(key=lambda x: -x["score"])
-        top5 = scores[:5]
+        ranked = _build_country_team_scores(code, worldwide, regional, team)
+        top5 = ranked[:5]
         countries.append({
             "code": code,
             "name": COUNTRY_NAMES.get(code, code),
@@ -344,36 +406,147 @@ def get_trend_regions(team: str = Query(None)):
 
 
 @router.get("/api/narrative")
-def get_narrative(teams: str = Query("Argentina,France,England,Brazil"), days: int = Query(7)):
-    """Multi-team sentiment time series (hourly buckets)."""
+def get_narrative(teams: str = Query("Argentina,France,England,Brazil")):
+    """Multi-team sentiment time series — one point per collection day."""
     team_list = [t.strip() for t in teams.split(",") if t.strip() in TEAM_NAMES][:4]
     conn = get_connection()
     p = ph()
-    cutoff = since(days * 24)
 
-    series_by_time = defaultdict(dict)
+    earliest = conn.execute(
+        f"""
+        SELECT MIN(captured_at) as first_at FROM sentiment_snapshots WHERE source = {p}
+        """,
+        ("bluesky",),
+    ).fetchone()
+    cutoff = (earliest["first_at"] if earliest and earliest["first_at"] else since(7 * 24))
+
+    series_by_day = defaultdict(dict)
     for team in team_list:
         rows = conn.execute(
             f"""
-            SELECT substr(captured_at, 1, 13) as captured_at,
+            SELECT substr(captured_at, 1, 10) as day,
                    AVG(compound) as compound, SUM(mention_count) as mentions
             FROM sentiment_snapshots
-            WHERE team = {p} AND source = {p} AND captured_at > {p}
-            GROUP BY substr(captured_at, 1, 13)
-            ORDER BY substr(captured_at, 1, 13) ASC
+            WHERE team = {p} AND source = {p} AND captured_at >= {p}
+            GROUP BY substr(captured_at, 1, 10)
+            ORDER BY day ASC
             """,
             (team, "bluesky", cutoff),
         ).fetchall()
         for row in rows:
-            bucket = row["captured_at"]
-            series_by_time[bucket][team] = round(row["compound"] or 0, 4)
-            series_by_time[bucket][f"{team}_mentions"] = row["mentions"] or 0
+            day = row["day"]
+            series_by_day[day][team] = round(row["compound"] or 0, 4)
+            series_by_day[day][f"{team}_mentions"] = row["mentions"] or 0
 
     conn.close()
     points = []
-    for bucket in sorted(series_by_time.keys()):
-        point = {"time": bucket}
-        point.update(series_by_time[bucket])
+    for day in sorted(series_by_day.keys()):
+        point = {"time": day}
+        point.update(series_by_day[day])
         points.append(point)
 
-    return {"teams": team_list, "points": points}
+    return {
+        "teams": team_list,
+        "points": points,
+        "first_collection_date": cutoff[:10] if cutoff else None,
+    }
+
+
+@router.get("/api/interest-odds")
+def get_interest_odds():
+    """Odds rank vs combined Google Trends + Bluesky interest rank."""
+    conn = get_connection()
+    p = ph()
+
+    trends_rows = conn.execute("""
+        SELECT team, interest_score FROM trends_snapshots
+        WHERE region = 'worldwide'
+        AND captured_at = (SELECT MAX(captured_at) FROM trends_snapshots WHERE region = 'worldwide')
+    """).fetchall()
+
+    mention_rows = conn.execute(
+        f"""
+        SELECT team, SUM(mention_count) as mentions
+        FROM sentiment_snapshots WHERE source = {p}
+        GROUP BY team
+        """,
+        ("bluesky",),
+    ).fetchall()
+
+    odds_rows = conn.execute("""
+        SELECT team, win_probability FROM odds_snapshots
+        WHERE captured_at = (SELECT MAX(captured_at) FROM odds_snapshots)
+    """).fetchall()
+    conn.close()
+
+    trends_map = {t: 0 for t in TEAM_NAMES}
+    for row in trends_rows:
+        if row["team"] in trends_map:
+            trends_map[row["team"]] = row["interest_score"] or 0
+
+    mentions_map = {t: 0 for t in TEAM_NAMES}
+    for row in mention_rows:
+        if row["team"] in mentions_map:
+            mentions_map[row["team"]] = row["mentions"] or 0
+
+    odds_map = {t: 0.0 for t in TEAM_NAMES}
+    for row in odds_rows:
+        if row["team"] in odds_map:
+            odds_map[row["team"]] = row["win_probability"] or 0.0
+
+    trends_rank = rank_by_value([(t, trends_map[t]) for t in TEAM_NAMES])
+    mentions_rank = rank_by_value([(t, mentions_map[t]) for t in TEAM_NAMES])
+    odds_rank = rank_by_value([(t, odds_map[t]) for t in TEAM_NAMES])
+
+    interest_rank = {}
+    for t in TEAM_NAMES:
+        interest_rank[t] = round((trends_rank[t] + mentions_rank[t]) / 2, 2)
+
+    composite_sorted = sorted(TEAM_NAMES, key=lambda t: interest_rank[t])
+    interest_rank_int = {t: i + 1 for i, t in enumerate(composite_sorted)}
+
+    rows = []
+    for t in TEAM_NAMES:
+        gap = interest_rank_int[t] - odds_rank[t]
+        rows.append({
+            "team": t,
+            "odds_rank": odds_rank[t],
+            "interest_rank": interest_rank_int[t],
+            "trends_rank": trends_rank[t],
+            "mentions_rank": mentions_rank[t],
+            "win_probability": round(odds_map[t], 2),
+            "trends_score": trends_map[t],
+            "mentions": mentions_map[t],
+            "gap": gap,
+        })
+
+    convergence = [
+        r for r in rows
+        if r["odds_rank"] <= CONVERGENCE_TOP_N
+        and r["interest_rank"] <= CONVERGENCE_TOP_N
+        and abs(r["gap"]) <= CONVERGENCE_MAX_GAP
+    ]
+    convergence.sort(key=lambda r: (r["odds_rank"] + r["interest_rank"]) / 2)
+    convergence_teams = {r["team"] for r in convergence}
+
+    underrated_by_fans = [
+        r for r in rows
+        if r["team"] not in convergence_teams
+        and r["odds_rank"] < r["interest_rank"]
+        and (r["interest_rank"] - r["odds_rank"]) >= DIVERGENCE_MIN_GAP
+    ]
+    underrated_by_fans.sort(key=lambda r: -(r["interest_rank"] - r["odds_rank"]))
+
+    overrated_by_fans = [
+        r for r in rows
+        if r["team"] not in convergence_teams
+        and r["interest_rank"] < r["odds_rank"]
+        and (r["odds_rank"] - r["interest_rank"]) >= DIVERGENCE_MIN_GAP
+    ]
+    overrated_by_fans.sort(key=lambda r: -(r["odds_rank"] - r["interest_rank"]))
+
+    return {
+        "convergence": convergence,
+        "higher_odds_lower_interest": underrated_by_fans,
+        "higher_interest_lower_odds": overrated_by_fans,
+    }

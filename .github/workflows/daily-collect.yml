@@ -54,3 +54,17 @@ jobs:
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
           PYTHONIOENCODING: utf-8
         run: python -c "from collectors.odds import collect_odds; collect_odds()"
+
+      - name: Verify collection wrote to database
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          python -c "
+          from database import get_connection
+          c = get_connection()
+          row = c.execute(\"SELECT MAX(captured_at) as t FROM sentiment_snapshots WHERE source='bluesky'\").fetchone()
+          c.close()
+          print(f'Latest Bluesky snapshot: {row[\"t\"]}')
+          if not row or not row['t']:
+              raise SystemExit('No Bluesky data in database after collection')
+          "

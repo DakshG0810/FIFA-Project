@@ -2,11 +2,11 @@ import { useState } from "react"
 import { Link, useLocation } from "react-router-dom"
 
 const links = [
-  { to: "/",          label: "Overview"   },
-  { to: "/sentiment", label: "Sentiment"  },
-  { to: "/odds",      label: "Odds"       },
-  { to: "/trends",    label: "Buzz"       },
-  { to: "/analytics", label: "Analytics"  },
+  { to: "/",          label: "Overview"       },
+  { to: "/sentiment", label: "Buzz"           },
+  { to: "/odds",      label: "Odds"           },
+  { to: "/trends",    label: "Search Interest"},
+  { to: "/analytics", label: "Analytics"      },
 ]
 
 export default function Navbar() {
@@ -14,8 +14,8 @@ export default function Navbar() {
   const [open, setOpen] = useState(false)
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 border-b border-white/10 bg-black/60 backdrop-blur-xl">
-      <div className="max-w-7xl mx-auto px-4 flex items-center justify-between h-14">
+    <nav className="fixed top-0 left-0 right-0 z-50 border-b border-white/10 bg-black/60 backdrop-blur-xl pt-[env(safe-area-inset-top,0px)]">
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 flex items-center justify-between h-14">
 
         {/* Logo */}
         <Link to="/" className="flex items-center gap-2 group">

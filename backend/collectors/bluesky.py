@@ -17,7 +17,7 @@ from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from dotenv import load_dotenv, find_dotenv
 from database import get_connection, ph
 from teams import TEAMS
-from topics import assign_cluster
+from topics import assign_cluster, is_football_keyword, is_wc_post_text
 
 load_dotenv(find_dotenv())
 
@@ -202,6 +202,15 @@ def fetch_team_posts(team_name, team_data, limit=50):
     return all_posts
 
 
+DEMO_HANDLE_RE = re.compile(r"^fan\d+\.bsky\.social$", re.I)
+BOT_HANDLE_RE = re.compile(r"(trending-words|bot\b|spam)", re.I)
+
+
+def is_demo_post(post: dict) -> bool:
+    handle = post.get("handle", "")
+    return "_compound_hint" in post or bool(DEMO_HANDLE_RE.match(handle))
+
+
 def parse_post(post):
     record = post.get("record", {})
     author = post.get("author", {})
@@ -213,6 +222,7 @@ def parse_post(post):
         "handle": author.get("handle", ""),
         "display_name": author.get("displayName", ""),
         "created_at": record.get("createdAt", ""),
+        "uri": post.get("uri", ""),
     }
 
 
@@ -291,10 +301,47 @@ def save_team_snapshot(cursor, captured_at, team_name, parsed, p):
     return n, keywords, parsed
 
 
+def save_cluster_posts(cursor, captured_at, team_name, parsed, p):
+    """Persist real posts grouped by topic cluster for Analytics."""
+    seen: set[str] = set()
+    for post in parsed:
+        if is_demo_post(post):
+            continue
+        text = (post.get("text") or "").strip()
+        handle = post.get("handle", "")
+        if not text or BOT_HANDLE_RE.search(handle):
+            continue
+        cluster = assign_cluster(text)
+        if cluster == "General":
+            continue
+        dedupe_key = post.get("uri") or text[:200]
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+        reach = (post.get("likes") or 0) + (post.get("reposts") or 0)
+        cursor.execute(
+            f"""
+            INSERT INTO cluster_posts
+            (captured_at, cluster, team, handle, display_name, text, likes, reposts, reach, post_uri)
+            VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p})
+            """,
+            (
+                captured_at, cluster, team_name, handle,
+                post.get("display_name") or handle, text[:500],
+                post.get("likes") or 0, post.get("reposts") or 0, reach,
+                post.get("uri") or "",
+            ),
+        )
+
+
 def track_influencers(influencer_agg, team_name, parsed):
     for post in parsed:
         handle = post.get("handle")
-        if not handle:
+        if not handle or is_demo_post(post):
+            continue
+        if BOT_HANDLE_RE.search(handle):
+            continue
+        if not is_wc_post_text(post.get("text", "")):
             continue
         reach = post["likes"] + post["reposts"]
         if handle not in influencer_agg:
@@ -374,6 +421,7 @@ def collect_bluesky():
         if n == 0:
             continue
 
+        save_cluster_posts(cursor, captured_at, team_name, parsed, p)
         track_influencers(influencer_agg, team_name, parsed)
         all_keywords.extend(keywords)
         teams_with_data += 1
@@ -381,17 +429,17 @@ def collect_bluesky():
         total_reach = sum(p_["likes"] + p_["reposts"] for p_ in parsed)
         _log(f"  {team_data['flag']} {team_name}: {n} posts, reach={total_reach}")
 
-    word_counts = Counter(w for w, _ in all_keywords).most_common(50)
+    word_counts = Counter(w for w, _ in all_keywords if is_football_keyword(w)).most_common(80)
     for keyword, freq in word_counts:
         team_words = [t for w, t in all_keywords if w == keyword]
         top_team = Counter(team_words).most_common(1)
         team_assoc = top_team[0][0] if top_team else None
         cursor.execute(
             f"""
-            INSERT INTO keyword_snapshots (captured_at, keyword, frequency, team_association)
-            VALUES ({p},{p},{p},{p})
+            INSERT INTO keyword_snapshots (captured_at, keyword, frequency, team_association, source)
+            VALUES ({p},{p},{p},{p},{p})
             """,
-            (captured_at, keyword, freq, team_assoc),
+            (captured_at, keyword, freq, team_assoc, "bluesky"),
         )
 
     if influencer_agg:

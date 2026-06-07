@@ -92,7 +92,9 @@ export interface BuzzTeam {
 export interface SpikeHeatmapData {
   teams: string[]
   buckets: number
-  hours: number
+  dates?: string[]
+  first_collection_date?: string | null
+  last_collection_date?: string | null
   cells: { team: string; bucket: number; mentions: number; intensity: number }[]
   max_mentions: number
 }
@@ -128,4 +130,22 @@ export interface CountryTrend {
 export interface NarrativePoint {
   time: string
   [key: string]: string | number
+}
+
+export interface InterestOddsRow {
+  team: string
+  odds_rank: number
+  interest_rank: number
+  trends_rank: number
+  mentions_rank: number
+  win_probability: number
+  trends_score: number
+  mentions: number
+  gap: number
+}
+
+export interface InterestOddsData {
+  convergence: InterestOddsRow[]
+  higher_odds_lower_interest: InterestOddsRow[]
+  higher_interest_lower_odds: InterestOddsRow[]
 }

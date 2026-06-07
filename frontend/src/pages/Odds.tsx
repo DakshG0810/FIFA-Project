@@ -23,6 +23,11 @@ export default function Odds() {
   const { data: leaderboard } = useApi<TeamSentiment[]>(fetchLeaderboard, [], 120000)
   const { data: history } = useApi(fetchHistory, [], 3600000)
 
+  const fanFavouriteTeam = useMemo(() => {
+    if (!leaderboard.length) return null
+    return [...leaderboard].sort((a, b) => (b.compound || 0) - (a.compound || 0))[0]?.team ?? null
+  }, [leaderboard])
+
   const divergenceMap = useMemo(() => {
     const sentRank = [...leaderboard]
       .sort((a, b) => (b.compound || 0) - (a.compound || 0))
@@ -38,7 +43,9 @@ export default function Odds() {
     return m
   }, [leaderboard, odds])
 
-  const sorted = [...odds].sort((a, b) => (b.win_probability || 0) - (a.win_probability || 0))
+  const sorted = [...odds]
+    .filter((t) => t.win_probability != null)
+    .sort((a, b) => (b.win_probability || 0) - (a.win_probability || 0))
   const top3 = sorted.slice(0, 3)
   const rest = sorted.slice(3)
 
@@ -58,12 +65,14 @@ export default function Odds() {
   ]
   const podiumLabels = ["🥇", "🥈", "🥉"]
 
+  const fanFavClass = "ring-1 ring-sky-400/50 bg-sky-500/10"
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 w-full max-w-full">
       <div className="flex items-center gap-2">
         <div>
           <h1 className="text-2xl font-bold text-white mb-1">Live Odds Tracker</h1>
-          <p className="text-white/40 text-sm">Win probabilities from bookmakers</p>
+          <p className="text-white/40 text-sm">Tournament winner odds for all 48 nations</p>
         </div>
         <DataBadge mode={badge} />
       </div>
@@ -77,44 +86,87 @@ export default function Odds() {
       ) : (
         <>
           <div className="grid grid-cols-3 gap-3">
-            {top3.map((team, i) => (
-              <button
-                key={team.team}
-                onClick={() => setSelected(selected === team.team ? null : team.team)}
-                className={`rounded-2xl border p-4 text-center transition-all ${podiumColors[i]} ${
-                  selected === team.team ? "ring-1 ring-white/20" : "hover:brightness-125"
-                }`}
-              >
-                <div className="text-2xl mb-1">{podiumLabels[i]}</div>
-                <TeamFlag team={team.team} size="lg" />
-                <div className="text-white font-bold text-sm mt-2">{team.team}</div>
-                <div className="text-emerald-400 text-xl font-black mt-1 font-mono">
-                  {((team.win_probability || 0) * 100).toFixed(1)}%
-                </div>
-                <div className="text-white/30 text-xs">win probability</div>
-              </button>
-            ))}
-          </div>
-
-          <div className="space-y-1.5">
-            {rest.map((team, i) => {
-              const delta = divergenceMap.get(team.team) ?? 0
-              const flash = Math.abs(delta) > 5
+            {top3.map((team, i) => {
+              const isFanFav = team.team === fanFavouriteTeam
               return (
                 <button
                   key={team.team}
+                  type="button"
+                  onClick={() => setSelected(selected === team.team ? null : team.team)}
+                  className={`rounded-2xl border p-4 text-center transition-all ${podiumColors[i]} ${
+                    isFanFav ? fanFavClass : ""
+                  } ${selected === team.team ? "ring-1 ring-white/20" : "hover:brightness-125"}`}
+                >
+                  <div className="text-2xl mb-1">{podiumLabels[i]}</div>
+                  <div className="flex justify-center">
+                    <TeamFlag team={team.team} size="lg" />
+                  </div>
+                  <div className="text-white font-bold text-sm mt-2">{team.team}</div>
+                  {isFanFav && (
+                    <span className="inline-block mt-1 text-[10px] uppercase tracking-wider text-sky-300 bg-sky-500/20 border border-sky-400/30 rounded-full px-2 py-0.5">
+                      Fan favourite
+                    </span>
+                  )}
+                  <div className="text-emerald-400 text-xl font-black mt-1 font-mono">
+                    {((team.win_probability || 0) * 100).toFixed(1)}%
+                  </div>
+                  <div className="text-white/30 text-xs">win probability</div>
+                </button>
+              )
+            })}
+          </div>
+
+          <div className="space-y-1.5">
+            <div className="hidden sm:flex items-center gap-3 px-4 py-2 text-[10px] uppercase tracking-wider text-white/35 border-b border-white/10">
+              <span className="w-5 text-right shrink-0">#</span>
+              <span className="w-7 shrink-0" aria-hidden />
+              <span className="flex-1">Team</span>
+              <span className="w-14 text-right shrink-0">Win %</span>
+              <span className="relative group w-8 text-center shrink-0">
+                <span className="cursor-help border-b border-dotted border-white/25">Gap</span>
+                <div
+                  role="tooltip"
+                  className="pointer-events-none absolute right-0 top-full z-20 mt-2 w-60 rounded-lg border border-white/15 bg-[#0a0a0e] px-3 py-2 text-[11px] text-white/80 opacity-0 shadow-xl transition-opacity group-hover:opacity-100 normal-case tracking-normal text-left"
+                >
+                  <p className="font-medium text-white mb-1">Sentiment vs odds rank</p>
+                  <p>
+                    ⚡ appears when a team&apos;s fan-sentiment rank and bookmaker odds rank differ by more than 5
+                    places — fans and bookmakers disagree on how strong that team is.
+                  </p>
+                </div>
+              </span>
+            </div>
+            {rest.map((team, i) => {
+              const delta = divergenceMap.get(team.team) ?? 0
+              const flash = Math.abs(delta) > 5
+              const isFanFav = team.team === fanFavouriteTeam
+              return (
+                <button
+                  key={team.team}
+                  type="button"
                   onClick={() => setSelected(selected === team.team ? null : team.team)}
                   className={`w-full flex items-center gap-3 rounded-xl px-4 py-3 border transition-all text-left ${
-                    selected === team.team ? "bg-emerald-500/10 border-emerald-500/30" : "bg-white/5 border-white/5 hover:bg-white/8"
+                    selected === team.team
+                      ? "bg-emerald-500/10 border-emerald-500/30"
+                      : isFanFav
+                        ? `${fanFavClass} border-sky-400/30`
+                        : "bg-white/5 border-white/5 hover:bg-white/8"
                   }`}
                 >
-                  <span className="text-white/20 text-xs w-5 text-right">{i + 4}</span>
+                  <span className="text-white/20 text-xs w-5 text-right shrink-0">{i + 4}</span>
                   <TeamFlag team={team.team} size="sm" />
-                  <span className="text-white text-sm font-medium flex-1">{team.team}</span>
-                  <span className="text-amber-400 font-mono text-sm w-14 text-right">
+                  <span className="text-white text-sm font-medium flex-1 flex items-center gap-2 min-w-0">
+                    <span className="truncate">{team.team}</span>
+                    {isFanFav && (
+                      <span className="shrink-0 text-[9px] uppercase tracking-wider text-sky-300 bg-sky-500/20 border border-sky-400/30 rounded-full px-1.5 py-0.5">
+                        Fan fav
+                      </span>
+                    )}
+                  </span>
+                  <span className="text-amber-400 font-mono text-sm w-14 text-right shrink-0">
                     {((team.win_probability || 0) * 100).toFixed(1)}%
                   </span>
-                  <span className="w-8 text-center text-xs" title="Sentiment vs odds rank gap">
+                  <span className="w-8 text-center text-xs shrink-0" title={flash ? `Rank gap: ${delta > 0 ? "+" : ""}${delta}` : undefined}>
                     {flash ? <span className="text-amber-400">⚡</span> : <span className="text-white/20">—</span>}
                   </span>
                 </button>
