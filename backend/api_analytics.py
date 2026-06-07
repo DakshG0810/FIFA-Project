@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Query
 
 from database import get_connection, ph
-from geo_regions import COUNTRY_CODES, COUNTRY_NAMES, confed_boost
+from geo_regions import COUNTRY_CODES, COUNTRY_NAMES
 from teams import TEAMS, TEAM_NAMES, CONFEDERATION_COLORS
 from topics import CLUSTERS, CLUSTER_META, assign_cluster, is_bot_post, is_wc_post_text
 
@@ -22,15 +22,17 @@ router = APIRouter()
 
 
 def _latest_valid_odds_capture(conn, min_teams: int = 25):
-    row = conn.execute(f"""
-        SELECT captured_at
+    rows = conn.execute(f"""
+        SELECT captured_at, SUM(win_probability) AS total_prob
         FROM odds_snapshots
         GROUP BY captured_at
         HAVING COUNT(DISTINCT team) >= {min_teams}
         ORDER BY captured_at DESC
-        LIMIT 1
-    """).fetchone()
-    return row["captured_at"] if row else None
+    """).fetchall()
+    for row in rows:
+        if ((row["total_prob"] if row else 0) or 0) > 1.05:
+            return row["captured_at"]
+    return None
 
 
 @router.get("/api/bluesky/check")
@@ -344,27 +346,24 @@ def get_influencers(tab: str = Query("all")):
 
 def _build_country_team_scores(
     country_code: str,
-    worldwide: dict[str, int],
     regional: dict[str, dict[str, int]],
     team_filter: str | None,
-) -> list[dict]:
-    """Rank teams for one country using regional Trends + confederation fallbacks."""
+) -> tuple[list[dict], bool]:
+    """Rank teams using Google Trends geo data for that country only — no worldwide fallback."""
     regional_scores = regional.get(country_code, {})
-    has_regional = bool(regional_scores)
-    scores: list[dict] = []
+    if not regional_scores:
+        return [], False
 
+    scores: list[dict] = []
     for t in TEAM_NAMES:
         if team_filter and t != team_filter:
             continue
         score = regional_scores.get(t, 0)
-        if score <= 0:
-            base = worldwide.get(t, 0)
-            boost = confed_boost(t, country_code)
-            score = int(base * boost) if has_regional else int(base * boost * 0.85)
-        scores.append({"team": t, "score": score})
+        if score > 0:
+            scores.append({"team": t, "score": score})
 
     scores.sort(key=lambda x: -x["score"])
-    return scores
+    return scores, True
 
 
 @router.get("/api/trends/regions")
@@ -381,17 +380,7 @@ def get_trend_regions(team: str = Query(None)):
         (since(336),),
     ).fetchall()
 
-    worldwide_rows = conn.execute("""
-        SELECT team, interest_score FROM trends_snapshots
-        WHERE region = 'worldwide'
-        AND captured_at = (SELECT MAX(captured_at) FROM trends_snapshots WHERE region = 'worldwide')
-    """).fetchall()
     conn.close()
-
-    worldwide = {t: 0 for t in TEAM_NAMES}
-    for row in worldwide_rows:
-        if row["team"] in worldwide:
-            worldwide[row["team"]] = row["interest_score"] or 0
 
     regional: dict[str, dict[str, int]] = defaultdict(dict)
     latest_capture: dict[str, str] = {}
@@ -408,19 +397,28 @@ def get_trend_regions(team: str = Query(None)):
             regional[region][t] = max(regional[region].get(t, 0), row["interest_score"] or 0)
 
     countries = []
+    with_data = 0
     for code in COUNTRY_CODES:
-        ranked = _build_country_team_scores(code, worldwide, regional, team)
-        top5 = [s for s in ranked if s["score"] > 0][:5]
+        ranked, has_regional = _build_country_team_scores(code, regional, team)
+        top5 = ranked[:5]
+        if has_regional:
+            with_data += 1
         countries.append({
             "code": code,
             "name": COUNTRY_NAMES.get(code, code),
+            "has_regional_data": has_regional,
             "top_team": top5[0]["team"] if top5 else None,
             "top5": top5,
             "top3": top5[:3],
             "highlight_score": top5[0]["score"] if top5 else 0,
         })
 
-    return {"countries": countries, "highlight_team": team}
+    return {
+        "countries": countries,
+        "highlight_team": team,
+        "countries_with_data": with_data,
+        "countries_total": len(COUNTRY_CODES),
+    }
 
 
 @router.get("/api/narrative")

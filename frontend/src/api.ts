@@ -70,9 +70,14 @@ export const api = {
   influencers: (tab = "all") =>
     get<Influencer[]>(`/api/influencers?tab=${tab}`, []),
   trendRegions: (team?: string) =>
-    get<{ countries: CountryTrend[]; highlight_team: string | null }>(
+    get<{
+      countries: CountryTrend[]
+      highlight_team: string | null
+      countries_with_data?: number
+      countries_total?: number
+    }>(
       `/api/trends/regions${team ? `?team=${encodeURIComponent(team)}` : ""}`,
-      { countries: [], highlight_team: null }
+      { countries: [], highlight_team: null, countries_with_data: 0, countries_total: 0 }
     ),
   narrative: (teams: string[]) =>
     get<{ teams: string[]; points: NarrativePoint[]; first_collection_date?: string | null }>(

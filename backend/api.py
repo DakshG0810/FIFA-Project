@@ -112,6 +112,54 @@ def bluesky_status_label(last_iso: str | None) -> str:
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
 
+@app.get("/api/team/{team}/inspect")
+def inspect_team(team: str):
+    """Manual sanity check — raw Bluesky sentiment + odds for one team."""
+    if team not in TEAM_NAMES:
+        return {"error": f"Unknown team: {team}"}
+    conn = get_connection()
+    p = ph()
+    latest_odds = _latest_valid_odds_capture(conn)
+    odds_row = None
+    if latest_odds:
+        odds_row = conn.execute(
+            f"""
+            SELECT win_probability, decimal_odds, bookmaker, captured_at
+            FROM odds_snapshots WHERE team = {p} AND captured_at = {p}
+            """,
+            (team, latest_odds),
+        ).fetchone()
+    bluesky = conn.execute(
+        f"""
+        SELECT SUM(mention_count) as mentions,
+               SUM(compound * mention_count) / NULLIF(SUM(mention_count), 0) as compound,
+               COUNT(*) as collection_runs,
+               MAX(captured_at) as last_capture
+        FROM sentiment_snapshots WHERE team = {p} AND source = {p}
+        """,
+        (team, "bluesky"),
+    ).fetchone()
+    conn.close()
+    wp = (odds_row["win_probability"] if odds_row else None)
+    return {
+        "team": team,
+        "odds": {
+            "win_probability": wp,
+            "win_percent": round(wp * 100, 2) if wp else None,
+            "decimal_odds": odds_row["decimal_odds"] if odds_row else None,
+            "bookmaker": odds_row["bookmaker"] if odds_row else None,
+            "captured_at": odds_row["captured_at"] if odds_row else None,
+            "snapshot_valid": latest_odds is not None,
+        },
+        "bluesky": {
+            "mentions": bluesky["mentions"] if bluesky else 0,
+            "compound_weighted": round((bluesky["compound"] if bluesky else 0) or 0, 4),
+            "collection_runs": bluesky["collection_runs"] if bluesky else 0,
+            "last_capture": bluesky["last_capture"] if bluesky else None,
+        },
+    }
+
+
 @app.get("/api/status")
 def status():
     conn = get_connection()
@@ -166,9 +214,9 @@ def get_sentiment(
         if hours <= 0:
             rows = conn.execute(f"""
                 SELECT team,
-                       AVG(positive)  as positive,
-                       AVG(negative)  as negative,
-                       AVG(compound)  as compound,
+                       SUM(positive * mention_count) / NULLIF(SUM(mention_count), 0) as positive,
+                       SUM(negative * mention_count) / NULLIF(SUM(mention_count), 0) as negative,
+                       SUM(compound * mention_count) / NULLIF(SUM(mention_count), 0) as compound,
                        SUM(mention_count) as mentions,
                        SUM(reach_score)   as total_reach,
                        MAX(source) as source
@@ -180,9 +228,9 @@ def get_sentiment(
         else:
             rows = conn.execute(f"""
                 SELECT team,
-                       AVG(positive)  as positive,
-                       AVG(negative)  as negative,
-                       AVG(compound)  as compound,
+                       SUM(positive * mention_count) / NULLIF(SUM(mention_count), 0) as positive,
+                       SUM(negative * mention_count) / NULLIF(SUM(mention_count), 0) as negative,
+                       SUM(compound * mention_count) / NULLIF(SUM(mention_count), 0) as compound,
                        SUM(mention_count) as mentions,
                        SUM(reach_score)   as total_reach,
                        MAX(source) as source
@@ -243,16 +291,25 @@ def get_team_sentiment_history(
     return rows_to_list(rows)
 
 def _latest_valid_odds_capture(conn, min_teams: int = 25):
-    """Ignore partial odds runs that inflate probabilities when re-normalised."""
-    row = conn.execute(f"""
-        SELECT captured_at
+    """
+    Pick the latest odds snapshot that looks like raw implied probability.
+    Reject partial runs (< min_teams) and old normalised rows (sum ~1.0).
+    Raw bookmaker implied probs sum to ~1.2–2.5 across all teams (overround).
+    """
+    rows = conn.execute(f"""
+        SELECT captured_at,
+               COUNT(DISTINCT team) AS team_count,
+               SUM(win_probability) AS total_prob
         FROM odds_snapshots
         GROUP BY captured_at
         HAVING COUNT(DISTINCT team) >= {min_teams}
         ORDER BY captured_at DESC
-        LIMIT 1
-    """).fetchone()
-    return row["captured_at"] if row else None
+    """).fetchall()
+    for row in rows:
+        total = (row["total_prob"] if row else 0) or 0
+        if total > 1.05:
+            return row["captured_at"]
+    return None
 
 
 @app.get("/api/odds")
@@ -269,12 +326,7 @@ def get_odds():
             WHERE team IN ({placeholders}) AND captured_at = {p}
         """, (*TEAM_NAMES, latest)).fetchall()
     else:
-        rows = conn.execute(f"""
-            SELECT DISTINCT ON (team) team, win_probability, decimal_odds, bookmaker, captured_at
-            FROM odds_snapshots
-            WHERE team IN ({placeholders})
-            ORDER BY team, captured_at DESC
-        """, tuple(TEAM_NAMES)).fetchall()
+        rows = []
     conn.close()
     data = {r["team"]: r for r in rows}
     result = []
@@ -379,9 +431,9 @@ def get_leaderboard():
 
     sentiment = conn.execute(f"""
         SELECT team,
-               AVG(compound) as compound,
-               AVG(positive) as positive,
-               AVG(negative) as negative,
+               SUM(compound * mention_count) / NULLIF(SUM(mention_count), 0) as compound,
+               SUM(positive * mention_count) / NULLIF(SUM(mention_count), 0) as positive,
+               SUM(negative * mention_count) / NULLIF(SUM(mention_count), 0) as negative,
                SUM(mention_count) as mentions,
                SUM(reach_score) as reach
         FROM sentiment_snapshots

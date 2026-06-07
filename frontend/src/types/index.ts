@@ -121,6 +121,7 @@ export interface Influencer {
 export interface CountryTrend {
   code: string
   name: string
+  has_regional_data?: boolean
   top_team: string | null
   top3: { team: string; score: number }[]
   top5: { team: string; score: number }[]

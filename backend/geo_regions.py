@@ -61,15 +61,17 @@ CONFED_COUNTRY_AFFINITY: dict[str, set[str]] = {
     "OFC": {"AU", "NZ"},
 }
 
-# Rotate ~8 geos per daily collection to build regional DB over time
+# Rotate ~8 geos per daily collection — all map countries covered over 8 days
 GEO_ROTATION_BATCHES = [
-    ["US", "CA", "MX", "GB", "FR", "DE", "ES", "IT"],
-    ["BR", "AR", "CO", "UY", "JP", "KR", "AU", "SA"],
-    ["CI", "NG", "MA", "EG", "ZA", "SN", "GH", "DZ"],
-    ["IR", "QA", "IN", "CN", "NL", "PT", "BE", "CH"],
-    ["HR", "TR", "PL", "SE", "NO", "AT", "CZ", "GR"],
-    ["EC", "PY", "HT", "PA", "TN", "CD", "CV", "UZ"],
-    ["IQ", "JO", "NZ", "TH", "ID", "MY", "PK", "BD"],
+    ["US", "CA", "MX", "BR", "AR", "GB", "FR", "DE"],
+    ["ES", "IT", "PT", "NL", "BE", "CH", "AT", "HR"],
+    ["TR", "PL", "SE", "NO", "DK", "IE", "CZ", "GR"],
+    ["UA", "RS", "BA", "RU", "IL", "EG", "MA", "ZA"],
+    ["NG", "SN", "CI", "GH", "DZ", "TN", "CD", "CV"],
+    ["CM", "JP", "KR", "CN", "IN", "AU", "NZ", "SA"],
+    ["IR", "QA", "IQ", "JO", "UZ", "TH", "ID", "MY"],
+    ["PK", "BD", "PH", "VN", "CO", "UY", "EC", "PY"],
+    ["CL", "PE", "VE", "HT", "PA", "CW", "HU", "CM"],
 ]
 
 
@@ -87,3 +89,8 @@ def geos_for_today() -> list[str]:
     from datetime import datetime
     idx = datetime.now().toordinal() % len(GEO_ROTATION_BATCHES)
     return GEO_ROTATION_BATCHES[idx]
+
+
+def all_map_geos() -> list[str]:
+    """Every country ISO shown on the geographic heatmap."""
+    return list(COUNTRY_CODES)

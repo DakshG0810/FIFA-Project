@@ -69,8 +69,7 @@ const NAME_TO_ISO: Record<string, string> = {
 
 
 const METHODOLOGY_GEO =
-
-  "Per-country Google Trends search interest for WC teams. Home nations rank #1 locally. Regional confederation weighting fills gaps where geo data is still building (rotated daily collection)."
+  "Only ~75 major countries are covered on this map — not all ~195 nations — because Google Trends enforces strict rate limits on regional queries."
 
 
 
@@ -184,7 +183,11 @@ export default function GeographicHeatmap() {
 
   )
 
-  const { data, loading } = useApi(fetchRegions, { countries: [], highlight_team: null }, 3600000)
+  const { data, loading } = useApi(
+    fetchRegions,
+    { countries: [], highlight_team: null, countries_with_data: 0, countries_total: 0 },
+    3600000
+  )
 
 
 
@@ -192,7 +195,7 @@ export default function GeographicHeatmap() {
 
     return data.countries
 
-      .filter((c) => c.top_team && COUNTRY_CENTROIDS[c.code])
+      .filter((c) => c.has_regional_data && c.top_team && COUNTRY_CENTROIDS[c.code])
 
       .filter(
 
@@ -260,11 +263,20 @@ export default function GeographicHeatmap() {
 
 
 
-      <p className="text-white/50 text-xs cursor-help" title={METHODOLOGY_GEO}>
-
-        Google Trends · which WC nation is searched most in each country · Please hover for top 5 within each nation
-
-      </p>
+      <div className="relative group max-w-3xl">
+        <p className="text-white/50 text-xs cursor-help underline decoration-dotted decoration-white/25 underline-offset-2">
+          Google Trends · which WC nation is searched most in each country · Please hover for top 5 within each nation
+          {data.countries_with_data != null ? (
+            <> · {data.countries_with_data}/{data.countries_total} countries with regional data</>
+          ) : null}
+        </p>
+        <div
+          role="tooltip"
+          className="pointer-events-none absolute left-0 top-full z-20 mt-2 w-full max-w-md rounded-lg border border-white/15 bg-[#0a0a0e] px-3 py-2.5 text-[11px] text-white/75 opacity-0 shadow-xl transition-opacity group-hover:opacity-100"
+        >
+          <p>{METHODOLOGY_GEO}</p>
+        </div>
+      </div>
 
 
 

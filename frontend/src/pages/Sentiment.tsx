@@ -6,7 +6,6 @@ import LoadingSkeleton from "../components/LoadingSkeleton"
 import DataBadge from "../components/DataBadge"
 import { useDataMode } from "../hooks/useDataMode"
 import { getFlagImageUrl } from "../data/teamFlagCodes"
-import TopicClusters from "../components/TopicClusters"
 import type { SentimentRow } from "../types"
 import {
   LineChart,
@@ -78,13 +77,22 @@ function formatChartDay(isoDate: string) {
   return d.toLocaleDateString("en", { month: "short", day: "numeric" })
 }
 
+function minMentionsForRanking(rows: SentimentRow[]) {
+  const top = Math.max(...rows.map((r) => r.mentions || 0), 0)
+  return Math.max(20, Math.floor(top * 0.05))
+}
+
 function sortTeams(rows: SentimentRow[], mode: SortMode) {
   const copy = [...rows]
   switch (mode) {
     case "most_positive":
-      return copy.sort((a, b) => (b.compound || 0) - (a.compound || 0))
+      return copy
+        .filter((t) => (t.mentions || 0) >= minMentionsForRanking(rows))
+        .sort((a, b) => (b.compound || 0) - (a.compound || 0))
     case "most_negative":
-      return copy.sort((a, b) => (a.compound || 0) - (b.compound || 0))
+      return copy
+        .filter((t) => (t.mentions || 0) >= minMentionsForRanking(rows))
+        .sort((a, b) => (a.compound || 0) - (b.compound || 0))
     case "positive_pct":
       return copy.sort((a, b) => (b.positive || 0) - (a.positive || 0))
     default:
@@ -124,7 +132,7 @@ export default function Sentiment() {
         <div>
           <h1 className="text-2xl font-bold text-white mb-1">Buzz</h1>
           <p className="text-white/40 text-sm">
-            Fan sentiment & discussion from Bluesky · topic clusters
+            Fan sentiment & discussion from Bluesky
           </p>
         </div>
         <DataBadge mode={badge} />
@@ -257,7 +265,6 @@ export default function Sentiment() {
         </div>
       </div>
 
-      <TopicClusters />
     </div>
   )
 }

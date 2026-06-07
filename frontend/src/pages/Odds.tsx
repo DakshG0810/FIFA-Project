@@ -6,6 +6,7 @@ import TeamFlag from "../components/TeamFlag"
 import LoadingSkeleton from "../components/LoadingSkeleton"
 import DataBadge from "../components/DataBadge"
 import { useDataMode } from "../hooks/useDataMode"
+import { pickFanFavourite } from "../utils/fanFavourite"
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts"
 
 export default function Odds() {
@@ -23,12 +24,10 @@ export default function Odds() {
   const { data: leaderboard } = useApi<TeamSentiment[]>(fetchLeaderboard, [], 120000)
   const { data: history } = useApi(fetchHistory, [], 3600000)
 
-  const fanFavouriteTeam = useMemo(() => {
-    if (!leaderboard.length) return null
-    return [...leaderboard]
-      .filter((t) => (t.mentions || 0) > 0)
-      .sort((a, b) => (b.mentions || 0) - (a.mentions || 0))[0]?.team ?? null
-  }, [leaderboard])
+  const fanFavouriteTeam = useMemo(
+    () => pickFanFavourite(leaderboard)?.team ?? null,
+    [leaderboard]
+  )
 
   const divergenceMap = useMemo(() => {
     const sentRank = [...leaderboard]

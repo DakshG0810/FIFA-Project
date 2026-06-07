@@ -194,6 +194,17 @@ def collect_odds():
     cursor = conn.cursor()
     captured_at = datetime.now().isoformat()
     p = ph()
+
+    # Remove old normalised snapshots (probabilities summed to ~100%)
+    cursor.execute("""
+        DELETE FROM odds_snapshots
+        WHERE captured_at IN (
+            SELECT captured_at FROM odds_snapshots
+            GROUP BY captured_at
+            HAVING SUM(win_probability) <= 1.05
+        )
+    """)
+
     saved = 0
 
     for team, data_ in avg_probs.items():

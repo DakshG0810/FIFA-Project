@@ -10,6 +10,7 @@ import SpikeHeatmap from "../components/SpikeHeatmap"
 import MomentumArrow from "../components/MomentumArrow"
 import type { SpikeAlert, TeamSentiment } from "../types"
 import { TEAM_CONFEDERATION } from "../data/teams"
+import { pickFanFavourite, fanFavouriteSub } from "../utils/fanFavourite"
 
 const CONF_COLORS: Record<string, string> = {
   UEFA: "bg-blue-500/20 text-blue-300 border-blue-500/30",
@@ -33,9 +34,7 @@ export default function Overview() {
     : 0
   const withOdds = leaderboard.filter((t) => t.win_probability != null && t.win_probability > 0)
   const topByOdds = [...withOdds].sort((a, b) => (b.win_probability || 0) - (a.win_probability || 0))[0]
-  const fanFavourite = [...leaderboard]
-    .filter((t) => (t.mentions || 0) > 0)
-    .sort((a, b) => (b.mentions || 0) - (a.mentions || 0))[0]
+  const fanFavourite = pickFanFavourite(leaderboard)
 
   return (
     <div className="space-y-6 sm:space-y-8 w-full max-w-full">
@@ -86,7 +85,7 @@ export default function Overview() {
               "—"
             )
           }
-          sub="most Bluesky posts"
+          sub={fanFavourite ? fanFavouriteSub(fanFavourite) : "needs enough Bluesky posts"}
           accent="blue"
           loading={loading}
         />

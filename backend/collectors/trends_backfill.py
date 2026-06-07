@@ -18,7 +18,7 @@ from datetime import datetime
 from dotenv import load_dotenv, find_dotenv
 from pytrends.request import TrendReq
 
-from database import get_connection, ph, USE_POSTGRES
+from database import get_connection, ph, safe_rollback, USE_POSTGRES
 from teams import TEAMS, get_trend_batches
 
 load_dotenv(find_dotenv())
@@ -28,7 +28,7 @@ MIN_BATCHES_OK = int(os.getenv("TRENDS_BACKFILL_MIN_BATCHES", "8"))
 
 
 def _day_exists(conn, team: str, day: str, p) -> bool:
-    """Use conn.execute — works on both SQLite and PostgreSQL adapters."""
+    """Use conn.execute — required for PostgreSQL (cursor.execute returns None)."""
     row = conn.execute(
         f"""
         SELECT 1 FROM trends_snapshots
@@ -38,6 +38,16 @@ def _day_exists(conn, team: str, day: str, p) -> bool:
         (team, day),
     ).fetchone()
     return row is not None
+
+
+def _insert_trend(cursor, p, captured_at: str, team: str, value: int, region: str):
+    cursor.execute(
+        f"""
+        INSERT INTO trends_snapshots (captured_at, team, interest_score, region)
+        VALUES ({p},{p},{p},{p})
+        """,
+        (captured_at, team, value, region),
+    )
 
 
 def _safe_int(value) -> int:
@@ -70,6 +80,7 @@ def backfill_worldwide_trends():
 
     for i, batch in enumerate(batches):
         queries = [TEAMS[team]["trends_query"] for team in batch]
+        batch_saved = 0
         try:
             pt.build_payload(queries, cat=20, timeframe=timeframe, geo="")
             df = pt.interest_over_time()
@@ -80,7 +91,6 @@ def backfill_worldwide_trends():
                 time.sleep(15)
                 continue
 
-            batch_saved = 0
             for date_idx, _row in df.iterrows():
                 day = date_idx.strftime("%Y-%m-%d")
                 captured_at = f"{day}T12:00:00"
@@ -92,13 +102,7 @@ def backfill_worldwide_trends():
                     if _day_exists(conn, team, day, p):
                         skipped += 1
                         continue
-                    cursor.execute(
-                        f"""
-                        INSERT INTO trends_snapshots (captured_at, team, interest_score, region)
-                        VALUES ({p},{p},{p},{p})
-                        """,
-                        (captured_at, team, value, "worldwide"),
-                    )
+                    _insert_trend(cursor, p, captured_at, team, value, "worldwide")
                     saved += 1
                     batch_saved += 1
 
@@ -111,6 +115,7 @@ def backfill_worldwide_trends():
             if i < len(batches) - 1:
                 time.sleep(15)
         except Exception as e:
+            safe_rollback(conn)
             msg = f"Batch {i + 1} error: {e}"
             print(f"  {msg}", flush=True)
             errors.append(msg)

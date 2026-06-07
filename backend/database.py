@@ -95,6 +95,15 @@ def ph():
     """Single placeholder shorthand."""
     return "%s" if USE_POSTGRES else "?"
 
+
+def safe_rollback(conn):
+    """Reset a failed PostgreSQL transaction so the next statement can run."""
+    if hasattr(conn, "rollback"):
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+
 def init_db():
     conn = get_connection()
     cursor = conn.cursor()
@@ -219,6 +228,16 @@ def init_db():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_trends_team_time ON trends_snapshots(team, captured_at)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_influencer_time ON influencer_snapshots(captured_at)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_cluster_posts_cluster ON cluster_posts(cluster, captured_at)")
+
+    # Drop old normalised odds rows (probabilities summed to ~100% — caused inflated favourites)
+    cursor.execute("""
+        DELETE FROM odds_snapshots
+        WHERE captured_at IN (
+            SELECT captured_at FROM odds_snapshots
+            GROUP BY captured_at
+            HAVING SUM(win_probability) <= 1.05
+        )
+    """)
 
     conn.commit()
     conn.close()
