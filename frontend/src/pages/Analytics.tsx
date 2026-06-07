@@ -28,7 +28,7 @@ const TEAM_COLORS = ["#10b981", "#3b82f6", "#f59e0b", "#ef4444"]
 
 const METHODOLOGY_INTEREST_ODDS =
 
-  "Odds: tournament winner outrights averaged across bookmakers. Total interest: average rank of Google Trends search score and Bluesky post volume (1 = highest). Convergence: both ranks in top 12 with gap ≤ 4. Divergence columns: gap ≥ 5 ranks, excluding convergence teams."
+  "Odds: tournament winner outrights averaged across bookmakers. Total interest: average rank of Google Trends search score and Bluesky post volume (1 = highest). Convergence: interest rank and odds rank within 4 places of each other. Divergence columns: gap ≥ 5 ranks, excluding convergence teams."
 
 
 

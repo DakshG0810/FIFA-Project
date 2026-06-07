@@ -55,7 +55,7 @@ export default function Overview() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatCard label="Total mentions" value={totalMentions.toLocaleString()} sub="all Bluesky collection runs" loading={loading} />
+        <StatCard label="Total mentions" value={totalMentions.toLocaleString()} sub="Bluesky posts" loading={loading} />
         <StatCard label="Avg positivity" value={`${avgPositivity}%`} sub="of all posts" accent="green" loading={loading} />
         <StatCard
           label="Bookmaker favourite"
@@ -119,7 +119,7 @@ export default function Overview() {
       <div>
         <h2 className="text-white/50 text-xs uppercase tracking-widest mb-1">Team leaderboard</h2>
         <p className="text-white/30 text-[11px] mb-3">
-          Posts total every Bluesky collection run · Win % from bookmakers
+          Posts total · Win % from bookmakers
         </p>
         {loading ? (
           <LoadingSkeleton rows={8} />
@@ -147,7 +147,7 @@ export default function Overview() {
                   className="pointer-events-none absolute right-0 top-full z-20 mt-2 w-56 rounded-lg border border-white/15 bg-[#0a0a0e] px-3 py-2 text-[11px] text-white/80 opacity-0 shadow-xl transition-opacity group-hover:opacity-100 normal-case tracking-normal text-left"
                 >
                   <p className="font-medium text-white mb-1">Fan sentiment score</p>
-                  <p>How positive or negative Bluesky posts sound about each team, averaged across all collection runs.</p>
+                  <p>How positive or negative Bluesky posts sound about each team, averaged across collection days.</p>
                   <p className="text-white/50 mt-1">+1 = very positive · 0 = neutral · −1 = very negative</p>
                 </div>
               </span>

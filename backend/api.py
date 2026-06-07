@@ -426,17 +426,9 @@ def get_leaderboard():
     conn = get_connection()
     p = ph()
 
-    sentiment = conn.execute(f"""
-        SELECT team,
-               SUM(compound * mention_count) / NULLIF(SUM(mention_count), 0) as compound,
-               SUM(positive * mention_count) / NULLIF(SUM(mention_count), 0) as positive,
-               SUM(negative * mention_count) / NULLIF(SUM(mention_count), 0) as negative,
-               SUM(mention_count) as mentions,
-               SUM(reach_score) as reach
-        FROM sentiment_snapshots
-        WHERE source = {p}
-        GROUP BY team
-    """, ("bluesky",)).fetchall()
+    from sentiment_aggregate import bluesky_team_totals_from_conn
+
+    bluesky_totals = bluesky_team_totals_from_conn(conn)
 
     latest_odds = latest_valid_capture(conn)
     if latest_odds:
@@ -457,26 +449,18 @@ def get_leaderboard():
         )
     """).fetchall()
 
-    momentum_rows = conn.execute(f"""
-        SELECT team, compound, captured_at FROM sentiment_snapshots
-        WHERE source = {p}
-        ORDER BY captured_at ASC
-    """, ("bluesky",)).fetchall()
-
     conn.close()
 
     odds_map   = {r["team"]: r["win_probability"] for r in odds if r["team"] in TEAM_NAMES}
     trends_map = {r["team"]: r["interest_score"]  for r in trends}
 
     momentum_map = {}
-    by_team = {}
-    for row in momentum_rows:
-        by_team.setdefault(row["team"], []).append(row["compound"] or 0)
-    for team, values in by_team.items():
-        if len(values) < 2:
+    for team, totals in bluesky_totals.items():
+        daily = totals["daily_compounds"]
+        if len(daily) < 2:
             momentum_map[team] = "flat"
         else:
-            delta = values[-1] - values[0]
+            delta = daily[-1][1] - daily[0][1]
             if delta > 0.05:
                 momentum_map[team] = "up"
             elif delta < -0.05:
@@ -484,17 +468,16 @@ def get_leaderboard():
             else:
                 momentum_map[team] = "flat"
 
-    sentiment_map = {row["team"]: row for row in sentiment if row["team"] in TEAM_NAMES}
     result = []
     for team in TEAM_NAMES:
-        row = sentiment_map.get(team)
+        row = bluesky_totals.get(team)
         result.append({
             "team":            team,
-            "compound":        round((row["compound"] if row else 0) or 0, 4),
-            "positive":        round((row["positive"] if row else 0) or 0, 4),
-            "negative":        round((row["negative"] if row else 0) or 0, 4),
-            "mentions":        (row["mentions"] if row else 0) or 0,
-            "reach":           (row["reach"] if row else 0) or 0,
+            "compound":        row["compound"] if row else 0,
+            "positive":        row["positive"] if row else 0,
+            "negative":        row["negative"] if row else 0,
+            "mentions":        row["mentions"] if row else 0,
+            "reach":           row["reach"] if row else 0,
             "win_probability": odds_map.get(team),
             "trends_score":    trends_map.get(team),
             "momentum":        momentum_map.get(team, "flat"),

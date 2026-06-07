@@ -10,8 +10,6 @@ import type { CountryTrend } from "../types"
 
 import { COUNTRY_CENTROIDS } from "../data/countryCentroids"
 
-import { WC_TEAMS } from "../data/teams"
-
 import { getFlagImageUrl } from "../data/teamFlagCodes"
 
 import { getFlag } from "./TeamFlag"
@@ -167,21 +165,13 @@ function MapFlagSvg({ team, w, h }: { team: string; w: number; h: number }) {
 
 export default function GeographicHeatmap() {
 
-  const [highlightTeam, setHighlightTeam] = useState("")
-
   const [tooltip, setTooltip] = useState<CountryTrend | null>(null)
 
   const badge = useDataMode("google_trends")
 
 
 
-  const fetchRegions = useCallback(
-
-    () => api.trendRegions(highlightTeam || undefined),
-
-    [highlightTeam]
-
-  )
+  const fetchRegions = useCallback(() => api.trendRegions(), [])
 
   const { data, loading } = useApi(
     fetchRegions,
@@ -197,18 +187,6 @@ export default function GeographicHeatmap() {
 
       .filter((c) => c.has_regional_data && c.top_team && COUNTRY_CENTROIDS[c.code])
 
-      .filter(
-
-        (c) =>
-
-          !highlightTeam ||
-
-          c.top_team === highlightTeam ||
-
-          (c.top5 || c.top3 || []).some((t) => t.team === highlightTeam)
-
-      )
-
       .map((c) => ({
 
         ...c,
@@ -217,7 +195,7 @@ export default function GeographicHeatmap() {
 
       }))
 
-  }, [data.countries, highlightTeam])
+  }, [data.countries])
 
 
 
@@ -225,39 +203,11 @@ export default function GeographicHeatmap() {
 
     <div className="bg-white/5 border border-white/10 rounded-2xl p-5 space-y-4">
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex items-center gap-2">
 
-        <div className="flex items-center gap-2">
+        <h2 className="text-white font-semibold">Geographic Heatmap</h2>
 
-          <h2 className="text-white font-semibold">Geographic Heatmap</h2>
-
-          <DataBadge mode={badge} />
-
-        </div>
-
-        <select
-
-          value={highlightTeam}
-
-          onChange={(e) => setHighlightTeam(e.target.value)}
-
-          className="bg-[#1a1a22] border border-white/20 text-white text-xs rounded-lg px-3 py-1.5 [&>option]:bg-[#1a1a22] [&>option]:text-white"
-
-        >
-
-          <option value="">All teams worldwide</option>
-
-          {WC_TEAMS.map((t) => (
-
-            <option key={t} value={t}>
-
-              {t}
-
-            </option>
-
-          ))}
-
-        </select>
+        <DataBadge mode={badge} />
 
       </div>
 
@@ -266,9 +216,6 @@ export default function GeographicHeatmap() {
       <div className="relative group max-w-3xl">
         <p className="text-white/50 text-xs cursor-help underline decoration-dotted decoration-white/25 underline-offset-2">
           Google Trends · which WC nation is searched most in each country · Please hover for top 5 within each nation
-          {data.countries_with_data != null ? (
-            <> · {data.countries_with_data}/{data.countries_total} countries with regional data</>
-          ) : null}
         </p>
         <div
           role="tooltip"

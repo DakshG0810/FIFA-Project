@@ -15,7 +15,6 @@ from topics import CLUSTERS, CLUSTER_META, assign_cluster, is_bot_post, is_wc_po
 from odds_validate import latest_valid_capture
 
 DEMO_HANDLE_RE = re.compile(r"^fan\d+\.bsky\.social$", re.I)
-CONVERGENCE_TOP_N = 12
 CONVERGENCE_MAX_GAP = 4
 DIVERGENCE_MIN_GAP = 5
 
@@ -474,14 +473,9 @@ def get_interest_odds():
         AND captured_at = (SELECT MAX(captured_at) FROM trends_snapshots WHERE region = 'worldwide')
     """).fetchall()
 
-    mention_rows = conn.execute(
-        f"""
-        SELECT team, SUM(mention_count) as mentions
-        FROM sentiment_snapshots WHERE source = {p}
-        GROUP BY team
-        """,
-        ("bluesky",),
-    ).fetchall()
+    from sentiment_aggregate import bluesky_team_totals_from_conn
+
+    bluesky_totals = bluesky_team_totals_from_conn(conn)
 
     latest_odds = latest_valid_capture(conn)
     if latest_odds:
@@ -498,10 +492,7 @@ def get_interest_odds():
         if row["team"] in trends_map:
             trends_map[row["team"]] = row["interest_score"] or 0
 
-    mentions_map = {t: 0 for t in TEAM_NAMES}
-    for row in mention_rows:
-        if row["team"] in mentions_map:
-            mentions_map[row["team"]] = row["mentions"] or 0
+    mentions_map = {t: bluesky_totals[t]["mentions"] for t in TEAM_NAMES}
 
     odds_map = {t: 0.0 for t in TEAM_NAMES}
     for row in odds_rows:
@@ -536,9 +527,7 @@ def get_interest_odds():
 
     convergence = [
         r for r in rows
-        if r["odds_rank"] <= CONVERGENCE_TOP_N
-        and r["interest_rank"] <= CONVERGENCE_TOP_N
-        and abs(r["gap"]) <= CONVERGENCE_MAX_GAP
+        if abs(r["gap"]) <= CONVERGENCE_MAX_GAP
     ]
     convergence.sort(key=lambda r: (r["odds_rank"] + r["interest_rank"]) / 2)
     convergence_teams = {r["team"] for r in convergence}
