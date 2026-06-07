@@ -74,7 +74,7 @@ export default function Overview() {
           loading={loading}
         />
         <StatCard
-          label="Fan favourite"
+          label="Most positively talked about"
           value={
             fanFavourite ? (
               <>

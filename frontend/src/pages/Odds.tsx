@@ -106,7 +106,7 @@ export default function Odds() {
                   <div className="text-white font-bold text-sm mt-2">{team.team}</div>
                   {isFanFav && (
                     <span className="inline-block mt-1 text-[10px] uppercase tracking-wider text-sky-300 bg-sky-500/20 border border-sky-400/30 rounded-full px-2 py-0.5">
-                      Fan favourite
+                      Top positive buzz
                     </span>
                   )}
                   <div className="text-emerald-400 text-xl font-black mt-1 font-mono">

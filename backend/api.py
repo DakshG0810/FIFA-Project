@@ -229,7 +229,23 @@ def get_sentiment(
     conn = get_connection()
     p = ph()
     if source:
-        if hours <= 0:
+        if hours <= 0 and source == "bluesky":
+            from sentiment_aggregate import bluesky_team_totals_from_conn
+
+            bluesky_totals = bluesky_team_totals_from_conn(conn)
+            rows = [
+                {
+                    "team": team,
+                    "positive": totals["positive"],
+                    "negative": totals["negative"],
+                    "compound": totals["compound"],
+                    "mentions": totals["mentions"],
+                    "total_reach": totals["reach"],
+                    "source": "bluesky",
+                }
+                for team, totals in bluesky_totals.items()
+            ]
+        elif hours <= 0:
             rows = conn.execute(f"""
                 SELECT team,
                        SUM(positive * mention_count) / NULLIF(SUM(mention_count), 0) as positive,

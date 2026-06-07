@@ -32,6 +32,12 @@ const METHODOLOGY_INTEREST_ODDS =
 
 
 
+const METHODOLOGY_NARRATIVE =
+
+  "Tracks how Bluesky fan tone shifts day by day for each team. Each point is one calendar day: we average post sentiment (VADER compound score from −1 negative to +1 positive) across posts collected that day. Select up to 4 teams to compare narrative momentum over time."
+
+
+
 function InterestOddsCard({
 
   row,
@@ -180,7 +186,17 @@ export default function Analytics() {
 
         </div>
 
-        <p className="text-white/40 text-xs">Compound sentiment · up to 4 teams</p>
+        <div className="relative group max-w-2xl">
+          <p className="text-white/40 text-xs cursor-help underline decoration-dotted decoration-white/25 underline-offset-2">
+            Compound sentiment · up to 4 teams · Please hover for methodology
+          </p>
+          <div
+            role="tooltip"
+            className="pointer-events-none absolute left-0 top-full z-20 mt-2 w-full max-w-md rounded-lg border border-white/15 bg-[#0a0a0e] px-3 py-2.5 text-[11px] text-white/75 opacity-0 shadow-xl transition-opacity group-hover:opacity-100"
+          >
+            <p>{METHODOLOGY_NARRATIVE}</p>
+          </div>
+        </div>
 
 
 
@@ -382,7 +398,7 @@ export default function Analytics() {
 
                 <p className="text-white/30 text-[11px] mb-2">
 
-                  More buzz than betting markets price in — fan favourite / dark horse territory.
+                  More buzz than betting markets price in — positive chatter / dark horse territory.
 
                 </p>
 

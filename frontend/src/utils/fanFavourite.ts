@@ -6,21 +6,24 @@ export function minMentionsThreshold(rows: TeamSentiment[]): number {
   return Math.max(20, Math.floor(top * 0.05))
 }
 
-/** Fan favourite = highest positive Bluesky tone among teams with sufficient posts. */
+/**
+ * Most positively talked about — matches Sentiment page “Most positive” tab:
+ * highest compound score among teams with enough posts (not small-sample noise).
+ */
 export function pickFanFavourite(rows: TeamSentiment[]): TeamSentiment | undefined {
   if (!rows.length) return undefined
   const minM = minMentionsThreshold(rows)
   const eligible = rows.filter((t) => (t.mentions || 0) >= minM)
   if (!eligible.length) return undefined
   return [...eligible].sort((a, b) => {
-    const byPositive = (b.positive || 0) - (a.positive || 0)
-    if (Math.abs(byPositive) > 0.002) return byPositive
-    return (b.compound || 0) - (a.compound || 0)
+    const byCompound = (b.compound || 0) - (a.compound || 0)
+    if (Math.abs(byCompound) > 0.005) return byCompound
+    return (b.positive || 0) - (a.positive || 0)
   })[0]
 }
 
 export function fanFavouriteSub(team: TeamSentiment): string {
   const posPct = Math.round((team.positive || 0) * 100)
   const comp = team.compound || 0
-  return `${posPct}% positive words · ${comp >= 0 ? "+" : ""}${comp.toFixed(2)} sentiment`
+  return `${posPct}% positive words · ${comp >= 0 ? "+" : ""}${comp.toFixed(2)} tone`
 }
