@@ -242,18 +242,39 @@ def get_team_sentiment_history(
     conn.close()
     return rows_to_list(rows)
 
+def _latest_valid_odds_capture(conn, min_teams: int = 25):
+    """Ignore partial odds runs that inflate probabilities when re-normalised."""
+    row = conn.execute(f"""
+        SELECT captured_at
+        FROM odds_snapshots
+        GROUP BY captured_at
+        HAVING COUNT(DISTINCT team) >= {min_teams}
+        ORDER BY captured_at DESC
+        LIMIT 1
+    """).fetchone()
+    return row["captured_at"] if row else None
+
+
 @app.get("/api/odds")
 def get_odds():
     """Latest win probability per team — all 48 WC nations."""
     conn = get_connection()
     p = ph()
+    latest = _latest_valid_odds_capture(conn)
     placeholders = ",".join([p] * len(TEAM_NAMES))
-    rows = conn.execute(f"""
-        SELECT DISTINCT ON (team) team, win_probability, decimal_odds, bookmaker, captured_at
-        FROM odds_snapshots
-        WHERE team IN ({placeholders})
-        ORDER BY team, captured_at DESC
-    """, tuple(TEAM_NAMES)).fetchall()
+    if latest:
+        rows = conn.execute(f"""
+            SELECT team, win_probability, decimal_odds, bookmaker, captured_at
+            FROM odds_snapshots
+            WHERE team IN ({placeholders}) AND captured_at = {p}
+        """, (*TEAM_NAMES, latest)).fetchall()
+    else:
+        rows = conn.execute(f"""
+            SELECT DISTINCT ON (team) team, win_probability, decimal_odds, bookmaker, captured_at
+            FROM odds_snapshots
+            WHERE team IN ({placeholders})
+            ORDER BY team, captured_at DESC
+        """, tuple(TEAM_NAMES)).fetchall()
     conn.close()
     data = {r["team"]: r for r in rows}
     result = []
@@ -290,6 +311,7 @@ def get_trends():
     rows = conn.execute("""
         SELECT DISTINCT ON (team) team, interest_score, region, captured_at
         FROM trends_snapshots
+        WHERE region = 'worldwide'
         ORDER BY team, captured_at DESC
     """).fetchall()
     conn.close()
@@ -367,16 +389,23 @@ def get_leaderboard():
         GROUP BY team
     """, ("bluesky",)).fetchall()
 
-    odds = conn.execute("""
-        SELECT team, win_probability
-        FROM odds_snapshots
-        WHERE captured_at = (SELECT MAX(captured_at) FROM odds_snapshots)
-    """).fetchall()
+    latest_odds = _latest_valid_odds_capture(conn)
+    if latest_odds:
+        odds = conn.execute(f"""
+            SELECT team, win_probability
+            FROM odds_snapshots
+            WHERE captured_at = {p}
+        """, (latest_odds,)).fetchall()
+    else:
+        odds = []
 
     trends = conn.execute("""
         SELECT team, interest_score
         FROM trends_snapshots
-        WHERE captured_at = (SELECT MAX(captured_at) FROM trends_snapshots)
+        WHERE region = 'worldwide'
+        AND captured_at = (
+            SELECT MAX(captured_at) FROM trends_snapshots WHERE region = 'worldwide'
+        )
     """).fetchall()
 
     momentum_rows = conn.execute(f"""

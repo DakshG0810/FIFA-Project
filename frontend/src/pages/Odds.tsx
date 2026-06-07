@@ -25,7 +25,9 @@ export default function Odds() {
 
   const fanFavouriteTeam = useMemo(() => {
     if (!leaderboard.length) return null
-    return [...leaderboard].sort((a, b) => (b.compound || 0) - (a.compound || 0))[0]?.team ?? null
+    return [...leaderboard]
+      .filter((t) => (t.mentions || 0) > 0)
+      .sort((a, b) => (b.mentions || 0) - (a.mentions || 0))[0]?.team ?? null
   }, [leaderboard])
 
   const divergenceMap = useMemo(() => {

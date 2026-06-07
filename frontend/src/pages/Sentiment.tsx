@@ -7,7 +7,6 @@ import DataBadge from "../components/DataBadge"
 import { useDataMode } from "../hooks/useDataMode"
 import { getFlagImageUrl } from "../data/teamFlagCodes"
 import TopicClusters from "../components/TopicClusters"
-import InfluencerTracker from "../components/InfluencerTracker"
 import type { SentimentRow } from "../types"
 import {
   LineChart,
@@ -125,7 +124,7 @@ export default function Sentiment() {
         <div>
           <h1 className="text-2xl font-bold text-white mb-1">Buzz</h1>
           <p className="text-white/40 text-sm">
-            Fan sentiment & discussion from Bluesky · topic clusters · influencers
+            Fan sentiment & discussion from Bluesky · topic clusters
           </p>
         </div>
         <DataBadge mode={badge} />
@@ -259,7 +258,6 @@ export default function Sentiment() {
       </div>
 
       <TopicClusters />
-      <InfluencerTracker />
     </div>
   )
 }

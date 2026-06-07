@@ -75,6 +75,38 @@ def assign_cluster(text: str) -> str:
     return "General"
 
 
+BOT_TEXT_FRAGMENTS = (
+    "top 10 trending words",
+    "trending words (past",
+    "bluesky's top 10",
+    "unlocked emergency words",
+    "something not right? reply!",
+    "past 10min",
+    "past 10 min",
+)
+
+BOT_HANDLE_FRAGMENTS = (
+    "trending-words",
+    "trendingwords",
+    "bot",
+    "spam",
+)
+
+
+def is_bot_post(text: str, handle: str = "") -> bool:
+    """Detect Bluesky spam / trending-word bots."""
+    if not text:
+        return bool(handle and any(f in handle.lower() for f in BOT_HANDLE_FRAGMENTS))
+    lower = text.lower()
+    if any(f in lower for f in BOT_TEXT_FRAGMENTS):
+        return True
+    if "💨x" in lower or "🔓" in text or "﹔" in text:
+        return True
+    if handle and any(f in handle.lower() for f in BOT_HANDLE_FRAGMENTS):
+        return True
+    return False
+
+
 def is_wc_post_text(text: str) -> bool:
     """True when a Bluesky post is plausibly World Cup / football discussion."""
     if not text or len(text.strip()) < 8:

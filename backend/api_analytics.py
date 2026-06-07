@@ -9,11 +9,9 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Query
 
 from database import get_connection, ph
-from geo_regions import (
-    COUNTRY_CODES, COUNTRY_NAMES, TEAM_HOME_ISO, confed_boost,
-)
+from geo_regions import COUNTRY_CODES, COUNTRY_NAMES, confed_boost
 from teams import TEAMS, TEAM_NAMES, CONFEDERATION_COLORS
-from topics import CLUSTERS, CLUSTER_META, assign_cluster, is_wc_post_text
+from topics import CLUSTERS, CLUSTER_META, assign_cluster, is_bot_post, is_wc_post_text
 
 DEMO_HANDLE_RE = re.compile(r"^fan\d+\.bsky\.social$", re.I)
 CONVERGENCE_TOP_N = 12
@@ -21,6 +19,18 @@ CONVERGENCE_MAX_GAP = 4
 DIVERGENCE_MIN_GAP = 5
 
 router = APIRouter()
+
+
+def _latest_valid_odds_capture(conn, min_teams: int = 25):
+    row = conn.execute(f"""
+        SELECT captured_at
+        FROM odds_snapshots
+        GROUP BY captured_at
+        HAVING COUNT(DISTINCT team) >= {min_teams}
+        ORDER BY captured_at DESC
+        LIMIT 1
+    """).fetchone()
+    return row["captured_at"] if row else None
 
 
 @router.get("/api/bluesky/check")
@@ -209,7 +219,11 @@ def get_clusters(team: str = Query(None)):
     """Topic clusters from Bluesky keywords and real stored posts."""
     conn = get_connection()
     p = ph()
-    cutoff = since(168)
+    latest_day_row = conn.execute(
+        "SELECT MAX(substr(captured_at, 1, 10)) as d FROM cluster_posts"
+    ).fetchone()
+    latest_day = (latest_day_row["d"] if latest_day_row else None) or ""
+    cutoff = since(72)
     rows = conn.execute(
         f"""
         SELECT keyword, SUM(frequency) as total_freq, MAX(team_association) as team_association
@@ -220,15 +234,26 @@ def get_clusters(team: str = Query(None)):
         (cutoff, "bluesky"),
     ).fetchall()
 
-    post_rows = conn.execute(
-        f"""
-        SELECT cluster, team, handle, display_name, text, reach, post_uri
-        FROM cluster_posts
-        WHERE captured_at > {p}
-        ORDER BY reach DESC
-        """,
-        (cutoff,),
-    ).fetchall()
+    if latest_day:
+        post_rows = conn.execute(
+            f"""
+            SELECT cluster, team, handle, display_name, text, reach, post_uri
+            FROM cluster_posts
+            WHERE substr(captured_at, 1, 10) = {p}
+            ORDER BY reach DESC
+            """,
+            (latest_day,),
+        ).fetchall()
+    else:
+        post_rows = conn.execute(
+            f"""
+            SELECT cluster, team, handle, display_name, text, reach, post_uri
+            FROM cluster_posts
+            WHERE captured_at > {p}
+            ORDER BY reach DESC
+            """,
+            (cutoff,),
+        ).fetchall()
     conn.close()
 
     cluster_volumes = {name: 0 for name in CLUSTERS}
@@ -253,7 +278,11 @@ def get_clusters(team: str = Query(None)):
             continue
         if team and row["team"] != team:
             continue
-        dedupe = row["post_uri"] or (row["text"] or "")[:200]
+        text = row["text"] or ""
+        handle = row["handle"] or ""
+        if is_bot_post(text, handle) or not is_wc_post_text(text):
+            continue
+        dedupe = row["post_uri"] or text[:200]
         if dedupe in seen_posts[cluster]:
             continue
         seen_posts[cluster].add(dedupe)
@@ -334,17 +363,6 @@ def _build_country_team_scores(
             score = int(base * boost) if has_regional else int(base * boost * 0.85)
         scores.append({"team": t, "score": score})
 
-    for t, home_iso in TEAM_HOME_ISO.items():
-        if home_iso != country_code:
-            continue
-        if team_filter and team_filter != t:
-            continue
-        max_other = max((s["score"] for s in scores if s["team"] != t), default=0)
-        for s in scores:
-            if s["team"] == t:
-                s["score"] = max_other + 15
-                break
-
     scores.sort(key=lambda x: -x["score"])
     return scores
 
@@ -392,7 +410,7 @@ def get_trend_regions(team: str = Query(None)):
     countries = []
     for code in COUNTRY_CODES:
         ranked = _build_country_team_scores(code, worldwide, regional, team)
-        top5 = ranked[:5]
+        top5 = [s for s in ranked if s["score"] > 0][:5]
         countries.append({
             "code": code,
             "name": COUNTRY_NAMES.get(code, code),
@@ -473,10 +491,14 @@ def get_interest_odds():
         ("bluesky",),
     ).fetchall()
 
-    odds_rows = conn.execute("""
-        SELECT team, win_probability FROM odds_snapshots
-        WHERE captured_at = (SELECT MAX(captured_at) FROM odds_snapshots)
-    """).fetchall()
+    latest_odds = _latest_valid_odds_capture(conn)
+    if latest_odds:
+        odds_rows = conn.execute(
+            f"SELECT team, win_probability FROM odds_snapshots WHERE captured_at = {p}",
+            (latest_odds,),
+        ).fetchall()
+    else:
+        odds_rows = []
     conn.close()
 
     trends_map = {t: 0 for t in TEAM_NAMES}

@@ -262,7 +262,7 @@ export default function GeographicHeatmap() {
 
       <p className="text-white/50 text-xs cursor-help" title={METHODOLOGY_GEO}>
 
-        Google Trends · which WC nation is searched most in each country · hover pins for top 5
+        Google Trends · which WC nation is searched most in each country · Please hover for top 5 within each nation
 
       </p>
 

@@ -168,19 +168,27 @@ def collect_odds():
         _log("[Odds] No outright winner odds returned")
         return
 
+    MIN_TEAMS = 25
+    if len(team_odds) < MIN_TEAMS:
+        _log(
+            f"[Odds] Only {len(team_odds)} teams returned (need {MIN_TEAMS}) — "
+            "skipping save to avoid inflated probabilities"
+        )
+        return
+
     avg_probs = {}
     for team, entries in team_odds.items():
+        if len(entries) < 2:
+            continue
         avg_probs[team] = {
             "prob": sum(e["prob"] for e in entries) / len(entries),
             "decimal": sum(e["decimal"] for e in entries) / len(entries),
-            "bookmaker": entries[0]["bookmaker"],
+            "bookmaker": f"{len(entries)} bookmakers",
         }
 
-    # Normalise so listed teams sum to 100% (bookmakers also price non-qualifiers)
-    total = sum(v["prob"] for v in avg_probs.values())
-    if total > 0:
-        for team in avg_probs:
-            avg_probs[team]["prob_normalised"] = avg_probs[team]["prob"] / total
+    if len(avg_probs) < MIN_TEAMS:
+        _log(f"[Odds] Only {len(avg_probs)} teams with 2+ bookmakers — skipping save")
+        return
 
     conn = get_connection()
     cursor = conn.cursor()
@@ -195,12 +203,12 @@ def collect_odds():
             VALUES ({p},{p},{p},{p},{p})
         """, (
             captured_at, team,
-            round(data_.get("prob_normalised", data_["prob"]), 6),
+            round(data_["prob"], 6),
             round(data_["decimal"], 2),
             data_["bookmaker"],
         ))
         saved += 1
-        pct = round(data_.get("prob_normalised", data_["prob"]) * 100, 1)
+        pct = round(data_["prob"] * 100, 1)
         flag = TEAMS.get(team, {}).get("flag", "")
         _log(f"  {flag} {team}: {pct}%")
 

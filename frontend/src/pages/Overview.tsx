@@ -31,8 +31,11 @@ export default function Overview() {
   const avgPositivity = leaderboard.length
     ? Math.round((leaderboard.reduce((s, t) => s + (t.positive || 0), 0) / leaderboard.length) * 100)
     : 0
-  const topByOdds = [...leaderboard].sort((a, b) => (b.win_probability || 0) - (a.win_probability || 0))[0]
-  const fanFavourite = [...leaderboard].sort((a, b) => (b.compound || 0) - (a.compound || 0))[0]
+  const withOdds = leaderboard.filter((t) => t.win_probability != null && t.win_probability > 0)
+  const topByOdds = [...withOdds].sort((a, b) => (b.win_probability || 0) - (a.win_probability || 0))[0]
+  const fanFavourite = [...leaderboard]
+    .filter((t) => (t.mentions || 0) > 0)
+    .sort((a, b) => (b.mentions || 0) - (a.mentions || 0))[0]
 
   return (
     <div className="space-y-6 sm:space-y-8 w-full max-w-full">
@@ -83,7 +86,7 @@ export default function Overview() {
               "—"
             )
           }
-          sub="highest sentiment score"
+          sub="most Bluesky posts"
           accent="blue"
           loading={loading}
         />

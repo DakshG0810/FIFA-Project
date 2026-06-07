@@ -240,11 +240,6 @@ def collect_google_trends():
             time.sleep(30)
             continue
 
-    if interest_scores:
-        avg_interest = sum(interest_scores) / len(interest_scores)
-        _save_curated_category_buzz(cursor, captured_at, avg_interest, p)
-        conn.commit()
-
     regional_saved = _collect_regional_trends(pt, cursor, captured_at, p, batches)
     conn.commit()
 

@@ -72,15 +72,7 @@ export default function SpikeHeatmap() {
 
       </div>
 
-      <p className="text-white/40 text-xs">
-        32 teams × Collection days
-        {data.first_collection_date && data.last_collection_date ? (
-          <> · {formatDay(data.first_collection_date)} – {formatDay(data.last_collection_date)}</>
-        ) : null}
-        {dates.length > 0 ? (
-          <> · {dates.length} day{dates.length !== 1 ? "s" : ""} (adds 1 column after each daily run)</>
-        ) : null}
-      </p>
+      <p className="text-white/40 text-xs">48 teams × collection days</p>
 
 
 

@@ -17,7 +17,7 @@ from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from dotenv import load_dotenv, find_dotenv
 from database import get_connection, ph
 from teams import TEAMS
-from topics import assign_cluster, is_football_keyword, is_wc_post_text
+from topics import assign_cluster, is_bot_post, is_football_keyword, is_wc_post_text
 
 load_dotenv(find_dotenv())
 
@@ -266,9 +266,16 @@ def detect_viral_spike(cursor, team_name, current_mentions, captured_at, p):
 
 
 def save_team_snapshot(cursor, captured_at, team_name, parsed, p):
-    texts = [p_["text"] for p_ in parsed if p_.get("text")]
+    clean = [
+        p_ for p_ in parsed
+        if p_.get("text")
+        and not is_demo_post(p_)
+        and not is_bot_post(p_["text"], p_.get("handle", ""))
+        and is_wc_post_text(p_["text"])
+    ]
+    texts = [p_["text"] for p_ in clean]
     if not texts:
-        return 0, []
+        return 0, [], []
 
     scores = [analyzer.polarity_scores(t) for t in texts]
     n = len(scores)
@@ -276,7 +283,7 @@ def save_team_snapshot(cursor, captured_at, team_name, parsed, p):
     avg_neg = sum(s["neg"] for s in scores) / n
     avg_neu = sum(s["neu"] for s in scores) / n
     avg_comp = sum(s["compound"] for s in scores) / n
-    total_reach = sum(p_["likes"] + p_["reposts"] for p_ in parsed)
+    total_reach = sum(p_["likes"] + p_["reposts"] for p_ in clean)
 
     cursor.execute(
         f"""
@@ -298,7 +305,7 @@ def save_team_snapshot(cursor, captured_at, team_name, parsed, p):
         keywords.extend((w, team_name) for w in words if w not in STOPWORDS)
 
     detect_viral_spike(cursor, team_name, n, captured_at, p)
-    return n, keywords, parsed
+    return n, keywords, clean
 
 
 def save_cluster_posts(cursor, captured_at, team_name, parsed, p):
@@ -309,7 +316,9 @@ def save_cluster_posts(cursor, captured_at, team_name, parsed, p):
             continue
         text = (post.get("text") or "").strip()
         handle = post.get("handle", "")
-        if not text or BOT_HANDLE_RE.search(handle):
+        if not text or BOT_HANDLE_RE.search(handle) or is_bot_post(text, handle):
+            continue
+        if not is_wc_post_text(text):
             continue
         cluster = assign_cluster(text)
         if cluster == "General":
@@ -339,7 +348,7 @@ def track_influencers(influencer_agg, team_name, parsed):
         handle = post.get("handle")
         if not handle or is_demo_post(post):
             continue
-        if BOT_HANDLE_RE.search(handle):
+        if BOT_HANDLE_RE.search(handle) or is_bot_post(post.get("text", ""), handle):
             continue
         if not is_wc_post_text(post.get("text", "")):
             continue
@@ -402,6 +411,12 @@ def collect_bluesky():
     cursor = conn.cursor()
     captured_at = datetime.now().isoformat()
     p = ph()
+
+    stale_cutoff = (datetime.now() - timedelta(days=14)).isoformat()
+    cursor.execute(
+        f"DELETE FROM cluster_posts WHERE captured_at < {p}",
+        (stale_cutoff,),
+    )
 
     teams_with_data = 0
     all_keywords = []

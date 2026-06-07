@@ -180,13 +180,7 @@ export default function Analytics() {
 
         </div>
 
-        <p className="text-white/40 text-xs">
-
-          Compound sentiment · up to 4 teams · one point per collection day
-
-          {narrative.first_collection_date ? ` · from ${narrative.first_collection_date}` : ""}
-
-        </p>
+        <p className="text-white/40 text-xs">Compound sentiment · up to 4 teams</p>
 
 
 
@@ -288,7 +282,11 @@ export default function Analytics() {
 
           >
 
-            Total interest (Google Trends + Bluesky) vs bookmaker win probability · hover for methodology
+            Total interest (Google Trends + Bluesky) vs Bookmakers win probability
+
+            <br />
+
+            Please hover for methodology
 
           </p>
 
