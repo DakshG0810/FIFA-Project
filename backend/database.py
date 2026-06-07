@@ -60,6 +60,9 @@ class DbConnection:
     def commit(self):
         self._conn.commit()
 
+    def rollback(self):
+        self._conn.rollback()
+
     def close(self):
         self._conn.close()
 
@@ -139,10 +142,18 @@ def init_db():
         )
     """)
 
-    try:
-        cursor.execute("ALTER TABLE keyword_snapshots ADD COLUMN source TEXT DEFAULT 'bluesky'")
-    except Exception:
-        pass
+    # Postgres aborts the whole transaction on a failed ALTER — use IF NOT EXISTS.
+    if USE_POSTGRES:
+        cursor.execute(
+            "ALTER TABLE keyword_snapshots ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'bluesky'"
+        )
+    else:
+        try:
+            cursor.execute(
+                "ALTER TABLE keyword_snapshots ADD COLUMN source TEXT DEFAULT 'bluesky'"
+            )
+        except Exception:
+            pass
 
     # trends_snapshots
     # Google Trends interest score per team per region
