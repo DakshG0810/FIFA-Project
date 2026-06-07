@@ -311,13 +311,7 @@ export default function GeographicHeatmap() {
 
 
 
-            {markers.map((m) => {
-
-              const active = !highlightTeam || m.top_team === highlightTeam
-
-              const size = active ? 18 : 14
-
-              return (
+            {markers.map((m) => (
 
                 <Marker
 
@@ -331,19 +325,17 @@ export default function GeographicHeatmap() {
 
                 >
 
-                  <g opacity={active ? 1 : 0.55} style={{ cursor: "pointer" }}>
+                  <g style={{ cursor: "pointer" }}>
 
-                    <circle r={size * 0.5} fill="#060608" fillOpacity={0.75} />
+                    <circle r={9} fill="#060608" fillOpacity={0.75} />
 
-                    <MapFlagSvg team={m.top_team!} w={size * 1.35} h={size} />
+                    <MapFlagSvg team={m.top_team!} w={24} h={18} />
 
                   </g>
 
                 </Marker>
 
-              )
-
-            })}
+            ))}
 
           </ComposableMap>
 
