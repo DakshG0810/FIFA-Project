@@ -61,17 +61,23 @@ CONFED_COUNTRY_AFFINITY: dict[str, set[str]] = {
     "OFC": {"AU", "NZ"},
 }
 
-# Rotate ~8 geos per daily collection — all map countries covered over 8 days
+# Rotate 20 geos per daily collection — all ~71 map countries covered over 4 days
 GEO_ROTATION_BATCHES = [
-    ["US", "CA", "MX", "BR", "AR", "GB", "FR", "DE"],
-    ["ES", "IT", "PT", "NL", "BE", "CH", "AT", "HR"],
-    ["TR", "PL", "SE", "NO", "DK", "IE", "CZ", "GR"],
-    ["UA", "RS", "BA", "RU", "IL", "EG", "MA", "ZA"],
-    ["NG", "SN", "CI", "GH", "DZ", "TN", "CD", "CV"],
-    ["CM", "JP", "KR", "CN", "IN", "AU", "NZ", "SA"],
-    ["IR", "QA", "IQ", "JO", "UZ", "TH", "ID", "MY"],
-    ["PK", "BD", "PH", "VN", "CO", "UY", "EC", "PY"],
-    ["CL", "PE", "VE", "HT", "PA", "CW", "HU", "CM"],
+    [
+        "US", "CA", "MX", "BR", "AR", "CO", "UY", "EC", "PY", "CL",
+        "PE", "VE", "HT", "PA", "CW", "GB", "FR", "DE", "ES", "IT",
+    ],
+    [
+        "PT", "NL", "BE", "CH", "AT", "HR", "RS", "TR", "PL", "SE",
+        "NO", "DK", "IE", "CZ", "HU", "GR", "UA", "BA", "MA", "EG",
+    ],
+    [
+        "ZA", "NG", "SN", "CM", "CI", "GH", "DZ", "TN", "CD", "CV",
+        "SA", "IR", "QA", "IQ", "JO", "IL", "RU", "IN", "PK", "BD",
+    ],
+    [
+        "JP", "KR", "CN", "AU", "NZ", "TH", "VN", "PH", "ID", "MY", "UZ",
+    ],
 ]
 
 

@@ -3,7 +3,7 @@ One-time regional Google Trends backfill for all heatmap countries.
 
 Collects per-country search interest for all 48 WC teams (geo != worldwide).
 Run manually when you need the map populated immediately instead of waiting
-for the daily 8-country rotation.
+for the daily 20-country rotation (~4 days).
 
   python -c "from collectors.regional_trends_backfill import backfill_regional_trends; backfill_regional_trends()"
 

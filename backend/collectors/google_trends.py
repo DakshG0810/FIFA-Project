@@ -124,7 +124,7 @@ def _save_curated_category_buzz(cursor, captured_at, avg_interest: float, p):
 
 
 def _collect_regional_trends(pt, cursor, captured_at, p, batches):
-    """Rotate ~8 countries per run to build per-geo Trends snapshots."""
+    """Rotate 20 countries per run (~4 days to cover all map geos)."""
     geos = geos_for_today()
     regional_saved = 0
     print(f"  [Trends] Regional geos today: {', '.join(geos)}")
