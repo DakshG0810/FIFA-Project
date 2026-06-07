@@ -57,13 +57,14 @@ export default function Overview() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard label="Total mentions" value={totalMentions.toLocaleString()} sub="Bluesky posts" loading={loading} />
         <StatCard label="Avg positivity" value={`${avgPositivity}%`} sub="of all posts" accent="green" loading={loading} />
+        <div className="col-span-2 md:col-span-1 min-w-0">
         <StatCard
           label="Bookmaker favourite"
           value={
             topByOdds ? (
               <>
                 <TeamFlag team={topByOdds.team} size="sm" />
-                {topByOdds.team}
+                <span className="truncate">{topByOdds.team}</span>
               </>
             ) : (
               "—"
@@ -73,6 +74,8 @@ export default function Overview() {
           accent="amber"
           loading={loading}
         />
+        </div>
+        <div className="col-span-2 md:col-span-1 min-w-0">
         <StatCard
           label="Most positively talked about"
           labelNote="Only teams with enough Bluesky posts are counted — at least 20 posts and 5% of the most-discussed team — so small samples are excluded."
@@ -80,7 +83,7 @@ export default function Overview() {
             fanFavourite ? (
               <>
                 <TeamFlag team={fanFavourite.team} size="sm" />
-                {fanFavourite.team}
+                <span className="truncate">{fanFavourite.team}</span>
               </>
             ) : (
               "—"
@@ -90,6 +93,7 @@ export default function Overview() {
           accent="blue"
           loading={loading}
         />
+        </div>
       </div>
 
       {spikes.length > 0 && (
@@ -156,34 +160,58 @@ export default function Overview() {
             {leaderboard.map((team, i) => {
               const conf = TEAM_CONFEDERATION[team.team] || "UEFA"
               const pct = team.win_probability ? `${(team.win_probability * 100).toFixed(1)}%` : "—"
+              const compound = team.compound || 0
+              const compoundClass =
+                compound >= 0.1 ? "text-emerald-400" : compound <= -0.1 ? "text-red-400" : "text-white/70"
               return (
-                <div
-                  key={team.team}
-                  className="flex items-center gap-3 bg-white/5 hover:bg-white/8 border border-white/5 hover:border-white/10 rounded-xl px-4 py-3 transition-all"
-                >
-                  <span className="text-white/20 text-xs w-5 text-right shrink-0">{i + 1}</span>
-                  <TeamFlag team={team.team} size="sm" />
-                  <span className="text-white text-sm font-medium w-28 shrink-0">{team.team}</span>
-                  <span className={`text-xs px-2 py-0.5 rounded-full border hidden md:inline w-24 text-center shrink-0 ${CONF_COLORS[conf]}`}>
-                    {conf}
-                  </span>
-                  <div className="flex-1 min-w-0 hidden md:block">
-                    <SentimentBar positive={team.positive} negative={team.negative} size="sm" />
+                <div key={team.team}>
+                  <div className="md:hidden bg-white/5 border border-white/5 rounded-xl px-3 py-2.5 space-y-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-white/20 text-xs w-4 text-right shrink-0">{i + 1}</span>
+                      <TeamFlag team={team.team} size="sm" />
+                      <span className="text-white text-sm font-medium flex-1 min-w-0 truncate">{team.team}</span>
+                      <span className="text-white/40 text-[10px] shrink-0">Posts</span>
+                      <span className="text-white text-xs font-mono shrink-0">
+                        {(team.mentions || 0).toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2 pl-6 text-[10px]">
+                      <span className={`text-xs px-2 py-0.5 rounded-full border ${CONF_COLORS[conf]}`}>{conf}</span>
+                      <div className="flex items-center gap-3 shrink-0">
+                        <span className="text-white/40">Win</span>
+                        <span className="text-amber-400 font-mono text-xs">{pct}</span>
+                        <MomentumArrow momentum={team.momentum} />
+                        <span className="text-white/40">Tone</span>
+                        <span className={`font-mono text-xs ${compoundClass}`}>
+                          {compound >= 0 ? "+" : ""}
+                          {compound.toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                  <span className="text-white text-xs w-20 text-right shrink-0 font-mono">
-                    {(team.mentions || 0).toLocaleString()}
-                  </span>
-                  <span className="text-amber-400 text-xs w-12 text-right shrink-0 font-mono">{pct}</span>
-                  <span className="w-4 flex justify-center shrink-0">
-                    <MomentumArrow momentum={team.momentum} />
-                  </span>
-                  <span
-                    className={`text-xs w-12 text-right shrink-0 font-mono ${
-                      (team.compound || 0) >= 0.1 ? "text-emerald-400" : (team.compound || 0) <= -0.1 ? "text-red-400" : "text-white/70"
-                    }`}
-                  >
-                    {(team.compound || 0) >= 0 ? "+" : ""}{(team.compound || 0).toFixed(2)}
-                  </span>
+
+                  <div className="hidden md:flex items-center gap-3 bg-white/5 hover:bg-white/8 border border-white/5 hover:border-white/10 rounded-xl px-4 py-3 transition-all">
+                    <span className="text-white/20 text-xs w-5 text-right shrink-0">{i + 1}</span>
+                    <TeamFlag team={team.team} size="sm" />
+                    <span className="text-white text-sm font-medium w-28 shrink-0">{team.team}</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full border w-24 text-center shrink-0 ${CONF_COLORS[conf]}`}>
+                      {conf}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <SentimentBar positive={team.positive} negative={team.negative} size="sm" />
+                    </div>
+                    <span className="text-white text-xs w-20 text-right shrink-0 font-mono">
+                      {(team.mentions || 0).toLocaleString()}
+                    </span>
+                    <span className="text-amber-400 text-xs w-12 text-right shrink-0 font-mono">{pct}</span>
+                    <span className="w-4 flex justify-center shrink-0">
+                      <MomentumArrow momentum={team.momentum} />
+                    </span>
+                    <span className={`text-xs w-12 text-right shrink-0 font-mono ${compoundClass}`}>
+                      {compound >= 0 ? "+" : ""}
+                      {compound.toFixed(2)}
+                    </span>
+                  </div>
                 </div>
               )
             })}

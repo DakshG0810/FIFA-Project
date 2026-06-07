@@ -8,10 +8,12 @@ import TeamFlag from "../components/TeamFlag"
 import LoadingSkeleton from "../components/LoadingSkeleton"
 import DataBadge from "../components/DataBadge"
 import { useDataMode } from "../hooks/useDataMode"
+import { useIsMobile } from "../hooks/useIsMobile"
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts"
 
 export default function Trends() {
   const badge = useDataMode("google_trends")
+  const isMobile = useIsMobile()
   const fetchTrends = useCallback(() => api.trends(), [])
   const { data: trends, loading } = useApi<TrendsEntry[]>(fetchTrends, [], 300000)
 
@@ -38,15 +40,15 @@ export default function Trends() {
         ) : (
           <>
             <div className="w-full max-w-full overflow-x-auto">
-            <ResponsiveContainer width="100%" height={280} minWidth={320}>
-              <BarChart data={chartData} margin={{ bottom: 8, left: 4, right: 8 }}>
+            <ResponsiveContainer width="100%" height={isMobile ? 240 : 280} minWidth={280}>
+              <BarChart data={chartData} margin={{ bottom: isMobile ? 4 : 8, left: 4, right: 8 }}>
                 <XAxis
                   dataKey="team"
-                  tick={{ fill: "#ffffff50", fontSize: 9 }}
-                  angle={-35}
+                  tick={{ fill: "#ffffff50", fontSize: isMobile ? 8 : 9 }}
+                  angle={isMobile ? -50 : -35}
                   textAnchor="end"
-                  height={72}
-                  interval={0}
+                  height={isMobile ? 56 : 72}
+                  interval={isMobile ? 5 : 0}
                 />
                 <YAxis domain={[0, 100]} tick={{ fill: "#ffffff40", fontSize: 10 }} />
                 <Tooltip

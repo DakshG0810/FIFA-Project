@@ -72,7 +72,10 @@ export default function SpikeHeatmap() {
 
       </div>
 
-      <p className="text-white/40 text-xs">48 teams × collection days</p>
+      <p className="text-white/40 text-xs">
+        48 teams × collection days
+        <span className="md:hidden text-white/30"> · scroll sideways →</span>
+      </p>
 
 
 
@@ -86,7 +89,7 @@ export default function SpikeHeatmap() {
 
       ) : (
 
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto -mx-1 px-1 pb-1 touch-pan-x">
 
           <div style={{ minWidth: Math.max(480, dates.length * 36 + 120) }}>
 
