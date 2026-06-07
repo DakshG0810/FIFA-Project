@@ -12,11 +12,17 @@ import requests
 from datetime import datetime
 from dotenv import load_dotenv, find_dotenv
 from database import get_connection, ph
+from odds_validate import purge_invalid_odds_snapshots, validate_prob_map
 from teams import TEAMS, TEAM_NAMES
 
 load_dotenv(find_dotenv())
 
 ODDS_API_URL = "https://api.the-odds-api.com/v4/sports/soccer_fifa_world_cup_winner/odds/"
+
+# Betfair Exchange outrights often include corrupt lay/back prices (e.g. DR Congo @ 1.02).
+SKIP_BOOKMAKER_PREFIXES = ("betfair_ex_",)
+# No WC winner should price below ~25% implied at any reputable book.
+MIN_DECIMAL_ODDS = 4.0
 
 # Map Odds API team names → our canonical team names
 ODDS_NAME_MAP = {
@@ -141,8 +147,14 @@ def collect_odds():
     # Outrights: one event, each bookmaker lists all nations with winner odds
     team_odds: dict[str, list] = {}
     unmapped: set[str] = set()
+    skipped_books: set[str] = set()
+    skipped_prices = 0
     for event in data:
         for bookmaker in event.get("bookmakers", []):
+            bm_key = bookmaker.get("key", "")
+            if any(bm_key.startswith(p) for p in SKIP_BOOKMAKER_PREFIXES):
+                skipped_books.add(bm_key)
+                continue
             for market in bookmaker.get("markets", []):
                 if market["key"] != "outrights":
                     continue
@@ -154,12 +166,19 @@ def collect_odds():
                             unmapped.add(raw_name)
                         continue
                     decimal = float(outcome["price"])
-                    if decimal > 1:
-                        team_odds.setdefault(our_name, []).append({
-                            "prob": 1 / decimal,
-                            "decimal": decimal,
-                            "bookmaker": bookmaker["key"],
-                        })
+                    if decimal < MIN_DECIMAL_ODDS:
+                        skipped_prices += 1
+                        continue
+                    team_odds.setdefault(our_name, []).append({
+                        "prob": 1 / decimal,
+                        "decimal": decimal,
+                        "bookmaker": bm_key,
+                    })
+
+    if skipped_books:
+        _log(f"  Skipped exchange bookmakers: {', '.join(sorted(skipped_books))}")
+    if skipped_prices:
+        _log(f"  Skipped {skipped_prices} corrupt sub-{MIN_DECIMAL_ODDS} decimal prices")
 
     if unmapped:
         _log(f"  Ignored non-WC outcomes: {', '.join(sorted(unmapped))}")
@@ -168,7 +187,7 @@ def collect_odds():
         _log("[Odds] No outright winner odds returned")
         return
 
-    MIN_TEAMS = 25
+    MIN_TEAMS = 40
     if len(team_odds) < MIN_TEAMS:
         _log(
             f"[Odds] Only {len(team_odds)} teams returned (need {MIN_TEAMS}) — "
@@ -190,22 +209,23 @@ def collect_odds():
         _log(f"[Odds] Only {len(avg_probs)} teams with 2+ bookmakers — skipping save")
         return
 
+    prob_map = {team: data_["prob"] for team, data_ in avg_probs.items()}
+    ok, reason = validate_prob_map(prob_map)
+    if not ok:
+        _log(f"[Odds] REJECTED — invalid market data ({reason})")
+        top = max(prob_map.items(), key=lambda x: x[1])
+        _log(f"  Top of API response: {top[0]} at {top[1] * 100:.1f}%")
+        return
+
     conn = get_connection()
+    purge_invalid_odds_snapshots(conn)
     cursor = conn.cursor()
     captured_at = datetime.now().isoformat()
     p = ph()
 
-    # Remove old normalised snapshots (probabilities summed to ~100%)
-    cursor.execute("""
-        DELETE FROM odds_snapshots
-        WHERE captured_at IN (
-            SELECT captured_at FROM odds_snapshots
-            GROUP BY captured_at
-            HAVING SUM(win_probability) <= 1.05
-        )
-    """)
-
     saved = 0
+    top = max(avg_probs.items(), key=lambda t: t[1]["prob"])
+    _log(f"  Market favourite: {top[0]} at {top[1]['prob'] * 100:.1f}% implied")
 
     for team, data_ in avg_probs.items():
         cursor.execute(f"""

@@ -226,6 +226,22 @@ def parse_post(post):
     }
 
 
+def _post_calendar_day(created_at: str) -> str | None:
+    if not created_at:
+        return None
+    return created_at[:10]
+
+
+def posts_on_collection_day(posts: list, captured_at: str) -> list:
+    """Keep only posts whose Bluesky createdAt falls on the collection calendar day."""
+    collection_day = captured_at[:10]
+    matched = [
+        post for post in posts
+        if _post_calendar_day(post.get("created_at", "")) == collection_day
+    ]
+    return matched
+
+
 def detect_viral_spike(cursor, team_name, current_mentions, captured_at, p):
     """Flag when current mentions exceed 3x the 6-hour rolling average."""
     six_hours_ago = (datetime.now() - timedelta(hours=6)).isoformat()
@@ -273,6 +289,7 @@ def save_team_snapshot(cursor, captured_at, team_name, parsed, p):
         and not is_bot_post(p_["text"], p_.get("handle", ""))
         and is_wc_post_text(p_["text"])
     ]
+    clean = posts_on_collection_day(clean, captured_at)
     texts = [p_["text"] for p_ in clean]
     if not texts:
         return 0, [], []
@@ -436,7 +453,7 @@ def collect_bluesky():
         if n == 0:
             continue
 
-        save_cluster_posts(cursor, captured_at, team_name, parsed, p)
+        save_cluster_posts(cursor, captured_at, team_name, posts_on_collection_day(parsed, captured_at), p)
         track_influencers(influencer_agg, team_name, parsed)
         all_keywords.extend(keywords)
         teams_with_data += 1

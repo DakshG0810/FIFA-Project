@@ -20,7 +20,7 @@ from pytrends.request import TrendReq
 from database import get_connection, ph
 from geo_regions import geos_for_today
 from teams import TEAMS, get_trend_batches
-from topics import is_football_keyword, CURATED_TRENDS_BUZZ
+from topics import is_football_keyword
 
 SUGGESTION_SEEDS = [
     "FIFA World Cup 2026",
@@ -77,6 +77,7 @@ def _save_trends_keyword(cursor, captured_at, keyword, frequency, team_assoc, p)
 
 def _collect_suggestion_keywords(pt, cursor, captured_at, p):
     seen: set[str] = set()
+    rank = 0
     for seed in SUGGESTION_SEEDS:
         try:
             for item in pt.suggestions(keyword=seed) or []:
@@ -85,7 +86,9 @@ def _collect_suggestion_keywords(pt, cursor, captured_at, p):
                     if phrase in seen:
                         continue
                     seen.add(phrase)
-                    _save_trends_keyword(cursor, captured_at, phrase, 40, None, p)
+                    rank += 1
+                    freq = max(12, 72 - rank * 4)
+                    _save_trends_keyword(cursor, captured_at, phrase, freq, None, p)
             time.sleep(2)
         except Exception as e:
             print(f"  Suggestions error ({seed}): {e}")
@@ -113,14 +116,6 @@ def _collect_related_keywords(pt, queries, team_batch, cursor, captured_at, p):
                 if kind == "rising":
                     freq = min(100, freq + 10)
                 _save_trends_keyword(cursor, captured_at, kw, freq, team, p)
-
-
-def _save_curated_category_buzz(cursor, captured_at, avg_interest: float, p):
-    """Seed category filters (Players, Events, etc.) with football WC search terms."""
-    base = max(avg_interest, 20)
-    for kw, _category, weight in CURATED_TRENDS_BUZZ:
-        freq = max(12, min(88, int(base * weight)))
-        _save_trends_keyword(cursor, captured_at, kw, freq, None, p)
 
 
 def _collect_regional_trends(pt, cursor, captured_at, p, batches):

@@ -143,7 +143,7 @@ export default function SpikeHeatmap() {
 
                         style={{ backgroundColor: `rgba(16, 185, 129, ${alpha})` }}
 
-                        title={`${team} · ${formatDay(day)} · ${mentions} posts`}
+                        title={`${team} · ${formatDay(day)} · ${mentions} posts that day`}
 
                       />
 

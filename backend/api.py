@@ -25,6 +25,7 @@ from teams import TEAM_NAMES, TEAMS, CONFEDERATION_COLORS
 from datetime import datetime, timedelta
 from dotenv import load_dotenv, find_dotenv
 from api_analytics import router as analytics_router
+from odds_validate import latest_valid_capture, pick_bookmaker_favourite, purge_invalid_odds_snapshots
 
 load_dotenv(find_dotenv())
 
@@ -55,6 +56,11 @@ app.include_router(analytics_router)
 def startup():
     try:
         init_db()
+        conn = get_connection()
+        n = purge_invalid_odds_snapshots(conn)
+        conn.close()
+        if n:
+            print(f"[Odds] Purged {n} invalid snapshot(s) on startup")
     except Exception as e:
         print(f"[DB] Startup init warning: {e}")
 
@@ -119,7 +125,7 @@ def inspect_team(team: str):
         return {"error": f"Unknown team: {team}"}
     conn = get_connection()
     p = ph()
-    latest_odds = _latest_valid_odds_capture(conn)
+    latest_odds = latest_valid_capture(conn)
     odds_row = None
     if latest_odds:
         odds_row = conn.execute(
@@ -174,6 +180,16 @@ def status():
     last_odds = conn.execute(
         f"SELECT MAX(captured_at) as t FROM odds_snapshots"
     ).fetchone()
+    valid_odds_cap = latest_valid_capture(conn)
+    bookmaker_fav = None
+    if valid_odds_cap:
+        odds_rows = conn.execute(
+            f"SELECT team, win_probability FROM odds_snapshots WHERE captured_at = {p}",
+            (valid_odds_cap,),
+        ).fetchall()
+        bookmaker_fav = pick_bookmaker_favourite(
+            {r["team"]: r["win_probability"] for r in odds_rows}
+        )
     total = conn.execute(
         "SELECT COUNT(*) as n FROM sentiment_snapshots"
     ).fetchone()
@@ -187,6 +203,8 @@ def status():
         "last_bluesky":       lb,
         "last_google_trends": lt,
         "last_odds":          lo,
+        "last_valid_odds":    valid_odds_cap,
+        "bookmaker_favourite": bookmaker_fav,
         "total_snapshots":    total["n"]        if total        else 0,
         "server_time":        datetime.now().isoformat(),
         "bluesky_configured": has_bsky_creds,
@@ -290,34 +308,12 @@ def get_team_sentiment_history(
     conn.close()
     return rows_to_list(rows)
 
-def _latest_valid_odds_capture(conn, min_teams: int = 25):
-    """
-    Pick the latest odds snapshot that looks like raw implied probability.
-    Reject partial runs (< min_teams) and old normalised rows (sum ~1.0).
-    Raw bookmaker implied probs sum to ~1.2–2.5 across all teams (overround).
-    """
-    rows = conn.execute(f"""
-        SELECT captured_at,
-               COUNT(DISTINCT team) AS team_count,
-               SUM(win_probability) AS total_prob
-        FROM odds_snapshots
-        GROUP BY captured_at
-        HAVING COUNT(DISTINCT team) >= {min_teams}
-        ORDER BY captured_at DESC
-    """).fetchall()
-    for row in rows:
-        total = (row["total_prob"] if row else 0) or 0
-        if total > 1.05:
-            return row["captured_at"]
-    return None
-
-
 @app.get("/api/odds")
 def get_odds():
     """Latest win probability per team — all 48 WC nations."""
     conn = get_connection()
     p = ph()
-    latest = _latest_valid_odds_capture(conn)
+    latest = latest_valid_capture(conn)
     placeholders = ",".join([p] * len(TEAM_NAMES))
     if latest:
         rows = conn.execute(f"""
@@ -395,9 +391,10 @@ def get_keywords(
     time_clause = "" if hours <= 0 else f"AND captured_at > {p}"
     time_params: tuple = () if hours <= 0 else (since(hours),)
 
+    # MAX not SUM — avoids flat duplicate frequencies stacking to equal word sizes
     if source:
         rows = conn.execute(f"""
-            SELECT keyword, SUM(frequency) as total_freq, MAX(team_association) as team_association
+            SELECT keyword, MAX(frequency) as total_freq, MAX(team_association) as team_association
             FROM keyword_snapshots
             WHERE source = {p} {time_clause}
             GROUP BY keyword
@@ -406,7 +403,7 @@ def get_keywords(
         """, (source, *time_params, limit * 3)).fetchall()
     else:
         rows = conn.execute(f"""
-            SELECT keyword, SUM(frequency) as total_freq, MAX(team_association) as team_association
+            SELECT keyword, MAX(frequency) as total_freq, MAX(team_association) as team_association
             FROM keyword_snapshots
             WHERE 1=1 {time_clause}
             GROUP BY keyword
@@ -441,7 +438,7 @@ def get_leaderboard():
         GROUP BY team
     """, ("bluesky",)).fetchall()
 
-    latest_odds = _latest_valid_odds_capture(conn)
+    latest_odds = latest_valid_capture(conn)
     if latest_odds:
         odds = conn.execute(f"""
             SELECT team, win_probability

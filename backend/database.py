@@ -229,19 +229,16 @@ def init_db():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_influencer_time ON influencer_snapshots(captured_at)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_cluster_posts_cluster ON cluster_posts(cluster, captured_at)")
 
-    # Drop old normalised odds rows (probabilities summed to ~100% — caused inflated favourites)
-    cursor.execute("""
-        DELETE FROM odds_snapshots
-        WHERE captured_at IN (
-            SELECT captured_at FROM odds_snapshots
-            GROUP BY captured_at
-            HAVING SUM(win_probability) <= 1.05
-        )
-    """)
-
     conn.commit()
     conn.close()
+
     db_type = "PostgreSQL" if USE_POSTGRES else "SQLite"
+    from odds_validate import purge_invalid_odds_snapshots
+    purge_conn = get_connection()
+    purged = purge_invalid_odds_snapshots(purge_conn)
+    purge_conn.close()
+    if purged:
+        print(f"[DB] Purged {purged} invalid odds snapshot(s)")
     print(f"[DB] Initialised ({db_type})")
 
 if __name__ == "__main__":

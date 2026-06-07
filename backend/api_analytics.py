@@ -12,6 +12,7 @@ from database import get_connection, ph
 from geo_regions import COUNTRY_CODES, COUNTRY_NAMES
 from teams import TEAMS, TEAM_NAMES, CONFEDERATION_COLORS
 from topics import CLUSTERS, CLUSTER_META, assign_cluster, is_bot_post, is_wc_post_text
+from odds_validate import latest_valid_capture
 
 DEMO_HANDLE_RE = re.compile(r"^fan\d+\.bsky\.social$", re.I)
 CONVERGENCE_TOP_N = 12
@@ -19,20 +20,6 @@ CONVERGENCE_MAX_GAP = 4
 DIVERGENCE_MIN_GAP = 5
 
 router = APIRouter()
-
-
-def _latest_valid_odds_capture(conn, min_teams: int = 25):
-    rows = conn.execute(f"""
-        SELECT captured_at, SUM(win_probability) AS total_prob
-        FROM odds_snapshots
-        GROUP BY captured_at
-        HAVING COUNT(DISTINCT team) >= {min_teams}
-        ORDER BY captured_at DESC
-    """).fetchall()
-    for row in rows:
-        if ((row["total_prob"] if row else 0) or 0) > 1.05:
-            return row["captured_at"]
-    return None
 
 
 @router.get("/api/bluesky/check")
@@ -183,16 +170,23 @@ def get_spike_heatmap():
             "max_mentions": 1,
         }
 
-    # One column per day we actually collected (grows +1 after each daily GitHub Action run)
+    # One column per calendar day — latest snapshot per team/day (not summed reruns)
     dates = sorted({row["captured_at"][:10] for row in rows})
     date_idx = {d: i for i, d in enumerate(dates)}
     grid = {team: [0] * len(dates) for team in TEAM_NAMES}
+    latest_per_cell: dict[tuple[str, str], tuple[str, int]] = {}
     for row in rows:
         team = row["team"]
         day = row["captured_at"][:10]
         if team not in grid or day not in date_idx:
             continue
-        grid[team][date_idx[day]] += row["mention_count"] or 0
+        key = (team, day)
+        mentions = row["mention_count"] or 0
+        prev = latest_per_cell.get(key)
+        if not prev or row["captured_at"] > prev[0]:
+            latest_per_cell[key] = (row["captured_at"], mentions)
+    for (team, day), (_cap, mentions) in latest_per_cell.items():
+        grid[team][date_idx[day]] = mentions
 
     max_val = max((max(v) for v in grid.values()), default=1) or 1
     cells = []
@@ -489,7 +483,7 @@ def get_interest_odds():
         ("bluesky",),
     ).fetchall()
 
-    latest_odds = _latest_valid_odds_capture(conn)
+    latest_odds = latest_valid_capture(conn)
     if latest_odds:
         odds_rows = conn.execute(
             f"SELECT team, win_probability FROM odds_snapshots WHERE captured_at = {p}",

@@ -11,6 +11,7 @@ import MomentumArrow from "../components/MomentumArrow"
 import type { SpikeAlert, TeamSentiment } from "../types"
 import { TEAM_CONFEDERATION } from "../data/teams"
 import { pickFanFavourite, fanFavouriteSub } from "../utils/fanFavourite"
+import { pickBookmakerFavourite } from "../utils/bookmakerFavourite"
 
 const CONF_COLORS: Record<string, string> = {
   UEFA: "bg-blue-500/20 text-blue-300 border-blue-500/30",
@@ -32,8 +33,7 @@ export default function Overview() {
   const avgPositivity = leaderboard.length
     ? Math.round((leaderboard.reduce((s, t) => s + (t.positive || 0), 0) / leaderboard.length) * 100)
     : 0
-  const withOdds = leaderboard.filter((t) => t.win_probability != null && t.win_probability > 0)
-  const topByOdds = [...withOdds].sort((a, b) => (b.win_probability || 0) - (a.win_probability || 0))[0]
+  const topByOdds = pickBookmakerFavourite(leaderboard)
   const fanFavourite = pickFanFavourite(leaderboard)
 
   return (

@@ -7,6 +7,7 @@ import LoadingSkeleton from "../components/LoadingSkeleton"
 import DataBadge from "../components/DataBadge"
 import { useDataMode } from "../hooks/useDataMode"
 import { pickFanFavourite } from "../utils/fanFavourite"
+import { pickBookmakerFavourite } from "../utils/bookmakerFavourite"
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts"
 
 export default function Odds() {
@@ -45,7 +46,7 @@ export default function Odds() {
   }, [leaderboard, odds])
 
   const sorted = [...odds]
-    .filter((t) => t.win_probability != null)
+    .filter((t) => t.win_probability != null && t.win_probability > 0 && t.win_probability <= 0.22)
     .sort((a, b) => (b.win_probability || 0) - (a.win_probability || 0))
   const top3 = sorted.slice(0, 3)
   const rest = sorted.slice(3)
